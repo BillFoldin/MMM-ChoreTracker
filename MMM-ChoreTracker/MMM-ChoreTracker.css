@@ -1,0 +1,1050 @@
+/**
+ * =========================================================================
+ * MMM-ChoreTracker.css
+ * =========================================================================
+ * High-contrast, dark-mode touchscreen stylesheet optimized for Raspberry Pi
+ * displays mounted behind two-way smart mirror glass.
+ * 
+ * Design Principles:
+ * 1. Deep blacks (#000000 / #0a0f1d) prevent glass backlight bleed.
+ * 2. High-contrast typography (#ffffff / #e2e8f0) visible in ambient room light.
+ * 3. Ample touch zones (min 48px - 68px) for capacitive and resistive touch.
+ * 4. Micro-interactions and active states provide tactile feedback.
+ * 5. Distinct color-coding: Routine (Sky), Bounty (Emerald), Claimable (Purple).
+ * =========================================================================
+ */
+
+:root {
+  --ct-bg-base: #06090f;
+  --ct-bg-card: rgba(18, 24, 38, 0.85);
+  --ct-bg-card-hover: rgba(28, 38, 58, 0.95);
+  --ct-bg-card-completed: rgba(16, 44, 32, 0.65);
+  --ct-border: rgba(255, 255, 255, 0.12);
+  --ct-border-focus: #38bdf8;
+  
+  --ct-text-primary: #ffffff;
+  --ct-text-secondary: #94a3b8;
+  --ct-text-muted: #64748b;
+  
+  --ct-color-routine: #38bdf8;
+  --ct-color-routine-bg: rgba(56, 189, 248, 0.15);
+  --ct-color-monetized: #10b981;
+  --ct-color-monetized-bg: rgba(16, 185, 129, 0.18);
+  --ct-color-grabs: #a855f7;
+  --ct-color-grabs-bg: rgba(168, 85, 247, 0.2);
+  --ct-color-pending: #f59e0b;
+  --ct-color-pending-bg: rgba(245, 158, 11, 0.18);
+  --ct-color-danger: #ef4444;
+  --ct-color-danger-bg: rgba(239, 68, 68, 0.2);
+
+  --ct-radius-sm: 8px;
+  --ct-radius-md: 14px;
+  --ct-radius-lg: 20px;
+  --ct-radius-full: 9999px;
+  
+  --ct-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* =========================================================================
+   Container & Header Layout
+   ========================================================================= */
+.mmm-choretracker {
+  font-family: var(--ct-font-family);
+  color: var(--ct-text-primary);
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ct-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ct-border);
+  margin-bottom: 20px;
+}
+
+.ct-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ct-module-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ct-radius-md);
+  background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+}
+
+.ct-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--ct-text-primary);
+}
+
+.ct-subtitle {
+  font-size: 13px;
+  color: var(--ct-text-secondary);
+  margin: 2px 0 0 0;
+  font-weight: 500;
+}
+
+.ct-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ct-summary-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ct-stat-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ct-border);
+  padding: 8px 12px;
+  border-radius: var(--ct-radius-full);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ct-stat-pill.emerald {
+  color: var(--ct-color-monetized);
+  border-color: rgba(16, 185, 129, 0.3);
+  background: var(--ct-color-monetized-bg);
+}
+
+.ct-stat-pill.sky {
+  color: var(--ct-color-routine);
+  border-color: rgba(56, 189, 248, 0.3);
+  background: var(--ct-color-routine-bg);
+}
+
+/* Touch Parent Lock Button */
+.ct-btn-parent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--ct-text-primary);
+  padding: 10px 18px;
+  border-radius: var(--ct-radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.15s ease;
+}
+
+.ct-btn-parent:hover,
+.ct-btn-parent:active {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: #38bdf8;
+  transform: scale(0.97);
+}
+
+.ct-btn-parent.unlocked {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: var(--ct-color-grabs);
+  color: #d8b4fe;
+}
+
+/* =========================================================================
+   Kids Dashboard Cards (Main Screen - Compact & Sleek)
+   ========================================================================= */
+.ct-kids-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  max-width: 820px;
+  margin: 6px auto 0 auto;
+}
+
+.ct-kid-card {
+  background: var(--ct-bg-card);
+  border: 1px solid var(--ct-border);
+  border-radius: 12px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.ct-kid-card:hover {
+  background: var(--ct-bg-card-hover);
+  border-color: #38bdf8;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(56, 189, 248, 0.2);
+}
+
+.ct-kid-card:active {
+  transform: scale(0.97);
+}
+
+.ct-kid-card.grabs-card {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(24, 18, 42, 0.85);
+}
+
+.ct-kid-card.grabs-card:hover {
+  border-color: #c084fc;
+  box-shadow: 0 6px 16px rgba(168, 85, 247, 0.22);
+}
+
+.ct-kid-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.ct-kid-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ct-text-primary);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.ct-kid-status {
+  font-size: 11px;
+  color: var(--ct-text-secondary);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.ct-kid-progress-bar {
+  width: 100%;
+  height: 3.5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--ct-radius-full);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.ct-kid-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #10b981);
+  border-radius: var(--ct-radius-full);
+  transition: width 0.3s ease;
+}
+
+.ct-kid-tap-hint {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.ct-kid-card.grabs-card .ct-kid-tap-hint {
+  color: #c084fc;
+}
+
+/* =========================================================================
+   "Who Completed This Chore?" Attribution Prompt
+   ========================================================================= */
+.ct-who-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  width: 100%;
+  margin: 10px 0;
+}
+
+.ct-who-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-md);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ct-who-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  transform: translateY(-2px);
+}
+
+.ct-who-btn:active {
+  transform: scale(0.96);
+}
+
+.ct-who-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.ct-who-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* =========================================================================
+   Task Cards Grid (Inside Child Chores Modal)
+   ========================================================================= */
+.ct-tasks-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.ct-empty-state {
+  text-align: center;
+  padding: 36px 20px;
+  background: var(--ct-bg-card);
+  border: 1px dashed var(--ct-border);
+  border-radius: var(--ct-radius-lg);
+  color: var(--ct-text-secondary);
+  font-size: 15px;
+}
+
+.ct-task-card {
+  position: relative;
+  background: var(--ct-bg-card);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.ct-task-card:hover {
+  background: var(--ct-bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+}
+
+.ct-task-card:active {
+  transform: scale(0.98);
+}
+
+.ct-task-card.completed .ct-card-title {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.ct-task-card.completed {
+  background: var(--ct-bg-card-completed);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.ct-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ct-card-title-group {
+  flex: 1;
+}
+
+.ct-card-title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0 0 6px 0;
+  color: var(--ct-text-primary);
+}
+
+.ct-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ct-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--ct-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ct-badge-routine {
+  background: var(--ct-color-routine-bg);
+  color: var(--ct-color-routine);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.ct-badge-monetized {
+  background: var(--ct-color-monetized-bg);
+  color: var(--ct-color-monetized);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  font-size: 12px;
+}
+
+.ct-badge-grabs {
+  background: var(--ct-color-grabs-bg);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.ct-badge-assigned {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  border: 1px solid var(--ct-border);
+}
+
+.ct-badge-approval {
+  background: var(--ct-color-pending-bg);
+  color: var(--ct-color-pending);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.ct-badge-approved {
+  background: rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+
+/* Touch Complete Button on Card */
+.ct-btn-card-check {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ct-btn-card-check:hover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.ct-btn-card-check:active {
+  transform: scale(0.9);
+}
+
+.ct-task-card.completed .ct-btn-card-check {
+  background: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
+.ct-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 10px;
+  font-size: 13px;
+  color: var(--ct-text-muted);
+}
+
+.ct-card-notes-count {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+
+/* =========================================================================
+   Modal Dialog Overlays (Full Screen / Centered on Touchscreen)
+   ========================================================================= */
+.ct-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.ct-modal-window {
+  background: #0d1322;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--ct-radius-lg);
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  animation: ctModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ctModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.ct-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--ct-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ct-modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ct-btn-close-modal {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--ct-border);
+  color: #fff;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ct-btn-close-modal:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ct-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* =========================================================================
+   Attribution Modal ("Who Completed This?")
+   ========================================================================= */
+.ct-who-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  margin: 10px 0;
+}
+
+.ct-who-btn {
+  background: var(--ct-bg-card);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-md);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 96px;
+  text-align: center;
+}
+
+.ct-who-btn:hover,
+.ct-who-btn:active {
+  background: var(--ct-bg-card-hover);
+  border-color: #38bdf8;
+  transform: scale(0.97);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+}
+
+.ct-who-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.ct-who-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ct-text-primary);
+}
+
+/* =========================================================================
+   PIN Keypad Modal
+   ========================================================================= */
+.ct-pin-display {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 20px 0 30px 0;
+}
+
+.ct-pin-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.ct-pin-dot.filled {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.7);
+  transform: scale(1.15);
+}
+
+.ct-numpad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.ct-num-key {
+  height: 68px;
+  border-radius: var(--ct-radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.ct-num-key:active {
+  background: #38bdf8;
+  color: #000;
+  transform: scale(0.94);
+}
+
+.ct-num-key.action-key {
+  font-size: 16px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+}
+
+.ct-num-key.action-key:active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.ct-pin-error {
+  color: #f87171;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 20px;
+  margin-top: 6px;
+}
+
+/* =========================================================================
+   Parent Admin Dashboard Tabs & Controls
+   ========================================================================= */
+.ct-admin-tabs {
+  display: flex;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px;
+  border-radius: var(--ct-radius-md);
+  margin-bottom: 20px;
+}
+
+.ct-tab-btn {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: var(--ct-radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--ct-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+  transition: all 0.15s ease;
+}
+
+.ct-tab-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #fff;
+  border: 1px solid var(--ct-color-routine);
+}
+
+.ct-tab-btn:active {
+  transform: scale(0.97);
+}
+
+/* Form inputs for Touchscreen */
+.ct-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ct-form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.ct-input,
+.ct-select,
+.ct-textarea {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-sm);
+  padding: 14px 16px;
+  font-size: 16px;
+  color: #ffffff;
+  font-family: inherit;
+  box-sizing: border-box;
+  min-height: 50px;
+}
+
+.ct-input:focus,
+.ct-select:focus,
+.ct-textarea:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+}
+
+.ct-days-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ct-day-chip {
+  flex: 1;
+  min-width: 40px;
+  height: 44px;
+  border-radius: var(--ct-radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ct-border);
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ct-day-chip.selected {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.4);
+}
+
+.ct-btn-primary {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: var(--ct-radius-md);
+  padding: 14px 24px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.15s ease;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.ct-btn-primary:active {
+  transform: scale(0.97);
+  filter: brightness(1.15);
+}
+
+.ct-btn-success {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff;
+  border: none;
+  border-radius: var(--ct-radius-md);
+  padding: 14px 24px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.ct-btn-success:active {
+  transform: scale(0.97);
+}
+
+.ct-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--ct-border);
+  color: #e2e8f0;
+  border-radius: var(--ct-radius-md);
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.ct-btn-secondary:active {
+  background: rgba(255, 255, 255, 0.18);
+  transform: scale(0.97);
+}
+
+/* =========================================================================
+   Payout & Audit Engine View
+   ========================================================================= */
+.ct-payout-box {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--ct-radius-lg);
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.ct-payout-amount-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6ee7b7;
+  letter-spacing: 0.04em;
+}
+
+.ct-payout-amount-val {
+  font-size: 38px;
+  font-weight: 800;
+  color: #10b981;
+  line-height: 1.1;
+  text-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.ct-audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-md);
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.ct-audit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--ct-radius-sm);
+  font-size: 15px;
+}
+
+.ct-audit-price {
+  font-weight: 700;
+  color: #10b981;
+}
+
+/* =========================================================================
+   Threaded Notes & Chat Bubbles
+   ========================================================================= */
+.ct-notes-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-md);
+}
+
+.ct-note-bubble {
+  background: rgba(255, 255, 255, 0.06);
+  border-left: 3px solid #38bdf8;
+  padding: 10px 14px;
+  border-radius: 4px var(--ct-radius-md) var(--ct-radius-md) 4px;
+}
+
+.ct-note-bubble.parent-note {
+  border-left-color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.ct-note-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.ct-note-author {
+  color: #38bdf8;
+}
+
+.ct-note-bubble.parent-note .ct-note-author {
+  color: #d8b4fe;
+}
+
+.ct-note-text {
+  font-size: 14px;
+  line-height: 1.4;
+  color: #f1f5f9;
+  margin: 0;
+  word-break: break-word;
+}
+
+/* Quick Note Preset Chips for Touchscreen */
+.ct-quick-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.ct-chip-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--ct-border);
+  color: #cbd5e1;
+  padding: 6px 12px;
+  border-radius: var(--ct-radius-full);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ct-chip-btn:active {
+  background: #38bdf8;
+  color: #000;
+}
+
+/* =========================================================================
+   Responsive Adjustments for Pi Display Sizes
+   ========================================================================= */
+@media (max-width: 600px) {
+  .ct-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .ct-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .ct-kids-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .ct-modal-window {
+    max-height: 98vh;
+    border-radius: var(--ct-radius-md);
+  }
+}

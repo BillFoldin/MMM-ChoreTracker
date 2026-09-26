@@ -1,0 +1,26 @@
+{
+  "payout_records": [
+    {
+      "id": "payout_1001",
+      "profile_id": "child_01",
+      "total_amount": 12.50,
+      "date_range_start": "2026-09-18",
+      "date_range_end": "2026-09-25",
+      "processed_timestamp": "2026-09-25T18:00:00Z",
+      "approved_task_ids": [
+        "task_201"
+      ]
+    },
+    {
+      "id": "payout_1002",
+      "profile_id": "child_02",
+      "total_amount": 8.00,
+      "date_range_start": "2026-09-15",
+      "date_range_end": "2026-09-22",
+      "processed_timestamp": "2026-09-22T19:30:00Z",
+      "approved_task_ids": [
+        "task_past_88"
+      ]
+    }
+  ]
+}

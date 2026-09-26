@@ -1,0 +1,6 @@
+{
+  "name": "MMM-ChoreTracker",
+  "description": "Production-ready MagicMirror² module for family chore tracking, allowances, routine recurrence, and parent payout audits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
