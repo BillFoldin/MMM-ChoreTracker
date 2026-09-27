@@ -526,9 +526,9 @@
   max-height: 100vh !important;
   margin: 0 !important;
   padding: 20px !important;
-  background: rgba(4, 7, 14, 0.82) !important;
-  backdrop-filter: blur(8px) !important;
-  -webkit-backdrop-filter: blur(8px) !important;
+  background: rgba(4, 7, 14, 0.85) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   z-index: 999999 !important;
   display: flex !important;
   flex-direction: column !important;
@@ -552,7 +552,7 @@
   box-sizing: border-box !important;
   padding: 0 !important;
   overflow: hidden !important;
-  animation: ctModalIn 0.15s ease-out;
+  animation: none !important;
 }
 
 .ct-modal-window.ct-modal-compact {
@@ -706,14 +706,14 @@
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.3);
   background: transparent;
-  transition: all 0.2s ease;
+  transition: none !important;
 }
 
 .ct-pin-dot.filled {
   background: #38bdf8;
   border-color: #38bdf8;
-  box-shadow: 0 0 14px rgba(56, 189, 248, 0.7);
-  transform: scale(1.15);
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 .ct-numpad-grid {
@@ -722,6 +722,7 @@
   gap: 14px;
   max-width: 340px;
   margin: 0 auto;
+  touch-action: manipulation;
 }
 
 .ct-num-key {
@@ -736,13 +737,20 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: none !important;
+  transform: none !important;
+  animation: none !important;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .ct-num-key:active {
-  background: #38bdf8;
-  color: #000;
-  transform: scale(0.94);
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
 }
 
 .ct-num-key.action-key {
@@ -753,8 +761,11 @@
 }
 
 .ct-num-key.action-key:active {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: #fff !important;
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
 }
 
 .ct-pin-error {

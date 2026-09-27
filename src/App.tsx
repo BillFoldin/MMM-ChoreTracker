@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   CheckCircle2,
@@ -79,25 +79,31 @@ function PinPadModal({
 }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const pinRef = useRef("");
 
   const handleKey = (k: string) => {
     setError("");
     if (k === "Clear") {
+      pinRef.current = "";
       setPin("");
       return;
     }
     if (k === "⌫") {
-      setPin((prev) => prev.slice(0, -1));
+      pinRef.current = pinRef.current.slice(0, -1);
+      setPin(pinRef.current);
       return;
     }
-    if (pin.length < 4) {
-      const next = pin + k;
+    if (pinRef.current.length < 4) {
+      pinRef.current = pinRef.current + k;
+      const next = pinRef.current;
       setPin(next);
       if (next.length === 4) {
         if (next === "1234") {
+          pinRef.current = "";
           onSuccess();
         } else {
           setError("Incorrect PIN (Default is 1234)");
+          pinRef.current = "";
           setPin("");
         }
       }
@@ -116,12 +122,12 @@ function PinPadModal({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pin]);
+  }, [onCancel]);
 
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="w-[92vw] max-w-sm bg-slate-900 border border-white/20 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-5 shadow-2xl"
+      className="w-[92vw] max-w-sm bg-slate-900 border border-white/20 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-5 shadow-2xl transition-none"
     >
       <div className="w-full flex justify-between items-center border-b border-white/10 pb-4">
         <div className="flex items-center gap-2 font-bold text-lg text-white">
@@ -131,7 +137,7 @@ function PinPadModal({
         <button
           type="button"
           onClick={onCancel}
-          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold transition cursor-pointer"
+          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold transition-none cursor-pointer"
         >
           ✕
         </button>
@@ -141,14 +147,14 @@ function PinPadModal({
         Enter your 4-digit security PIN to unlock approvals and payouts.
       </p>
 
-      {/* PIN dots */}
+      {/* PIN dots - instantaneous with no transition lag */}
       <div className="flex gap-3 my-1">
         {[0, 1, 2, 3].map((idx) => (
           <div
             key={idx}
-            className={`w-5 h-5 rounded-full border-2 transition-transform duration-100 ${
+            className={`w-5 h-5 rounded-full border-2 transition-none duration-0 ${
               idx < pin.length
-                ? "bg-sky-400 border-sky-400 scale-110 shadow-lg shadow-sky-400/50"
+                ? "bg-sky-400 border-sky-400"
                 : "border-slate-600 bg-transparent"
             }`}
           />
@@ -161,17 +167,18 @@ function PinPadModal({
         <div className="h-4 text-transparent text-xs select-none">ok</div>
       )}
 
-      {/* Keypad */}
-      <div className="grid grid-cols-3 gap-3 w-full">
+      {/* Keypad with zero click animation for instantaneous response */}
+      <div className="grid grid-cols-3 gap-3 w-full touch-manipulation select-none">
         {["1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0", "⌫"].map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => handleKey(k)}
-            className={`h-16 rounded-2xl font-bold flex items-center justify-center active:scale-95 transition-transform duration-75 select-none cursor-pointer ${
+            style={{ WebkitTapHighlightColor: "transparent" }}
+            className={`h-16 rounded-2xl font-bold flex items-center justify-center select-none cursor-pointer touch-manipulation transition-none duration-0 active:scale-100 transform-none ${
               k === "Clear" || k === "⌫"
-                ? "bg-white/5 hover:bg-white/10 active:bg-white/15 text-slate-300 text-sm"
-                : "bg-white/10 hover:bg-white/20 active:bg-white/25 text-white text-2xl"
+                ? "bg-white/5 text-slate-300 text-sm"
+                : "bg-white/10 text-white text-2xl"
             }`}
           >
             {k}
@@ -182,7 +189,7 @@ function PinPadModal({
       <button
         type="button"
         onClick={onCancel}
-        className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-semibold transition cursor-pointer"
+        className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-400 text-xs font-semibold transition-none cursor-pointer"
       >
         Cancel &amp; Return to Dashboard
       </button>
@@ -1101,7 +1108,7 @@ module.exports = NodeHelper.create({ ... });`}
             setActiveModal(null);
             setSelectedChildId(null);
           }}
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+          className="fixed inset-0 z-[100] bg-slate-950/85 flex items-center justify-center p-3 sm:p-5 md:p-8"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -1287,7 +1294,7 @@ module.exports = NodeHelper.create({ ... });`}
               setActiveModal(null);
             }
           }}
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+          className="fixed inset-0 z-[100] bg-slate-950/85 flex items-center justify-center p-3 sm:p-5 md:p-8"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -1457,7 +1464,7 @@ module.exports = NodeHelper.create({ ... });`}
               setActiveModal(null);
             }
           }}
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+          className="fixed inset-0 z-[100] bg-slate-950/85 flex items-center justify-center p-3 sm:p-5 md:p-8"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -1554,7 +1561,7 @@ module.exports = NodeHelper.create({ ... });`}
           onClick={() => {
             setActiveModal(null);
           }}
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+          className="fixed inset-0 z-[100] bg-slate-950/85 flex items-center justify-center p-3 sm:p-5 md:p-8"
         >
           <PinPadModal
             onSuccess={() => {
@@ -1575,7 +1582,7 @@ module.exports = NodeHelper.create({ ... });`}
             setIsParentUnlocked(false);
             setActiveModal(null);
           }}
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+          className="fixed inset-0 z-[100] bg-slate-950/85 flex items-center justify-center p-3 sm:p-5 md:p-8"
         >
           <div
             onClick={(e) => e.stopPropagation()}
