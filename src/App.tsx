@@ -68,6 +68,128 @@ interface PayoutRecord {
   approved_task_ids: string[];
 }
 
+// Dedicated PIN Pad modal component with isolated local state.
+// Prevents whole-app re-renders, eradicating screen flashing and input lag completely.
+function PinPadModal({
+  onSuccess,
+  onCancel
+}: {
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+
+  const handleKey = (k: string) => {
+    setError("");
+    if (k === "Clear") {
+      setPin("");
+      return;
+    }
+    if (k === "⌫") {
+      setPin((prev) => prev.slice(0, -1));
+      return;
+    }
+    if (pin.length < 4) {
+      const next = pin + k;
+      setPin(next);
+      if (next.length === 4) {
+        if (next === "1234") {
+          onSuccess();
+        } else {
+          setError("Incorrect PIN (Default is 1234)");
+          setPin("");
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") {
+        handleKey(e.key);
+      } else if (e.key === "Backspace") {
+        handleKey("⌫");
+      } else if (e.key === "Escape") {
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [pin]);
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="w-[92vw] max-w-sm bg-slate-900 border border-white/20 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-5 shadow-2xl"
+    >
+      <div className="w-full flex justify-between items-center border-b border-white/10 pb-4">
+        <div className="flex items-center gap-2 font-bold text-lg text-white">
+          <Lock className="w-5 h-5 text-sky-400" />
+          Parent Access
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold transition cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <p className="text-xs text-slate-400 text-center">
+        Enter your 4-digit security PIN to unlock approvals and payouts.
+      </p>
+
+      {/* PIN dots */}
+      <div className="flex gap-3 my-1">
+        {[0, 1, 2, 3].map((idx) => (
+          <div
+            key={idx}
+            className={`w-5 h-5 rounded-full border-2 transition-transform duration-100 ${
+              idx < pin.length
+                ? "bg-sky-400 border-sky-400 scale-110 shadow-lg shadow-sky-400/50"
+                : "border-slate-600 bg-transparent"
+            }`}
+          />
+        ))}
+      </div>
+
+      {error ? (
+        <div className="text-xs text-red-400 font-semibold h-4 text-center">{error}</div>
+      ) : (
+        <div className="h-4 text-transparent text-xs select-none">ok</div>
+      )}
+
+      {/* Keypad */}
+      <div className="grid grid-cols-3 gap-3 w-full">
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0", "⌫"].map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => handleKey(k)}
+            className={`h-16 rounded-2xl font-bold flex items-center justify-center active:scale-95 transition-transform duration-75 select-none cursor-pointer ${
+              k === "Clear" || k === "⌫"
+                ? "bg-white/5 hover:bg-white/10 active:bg-white/15 text-slate-300 text-sm"
+                : "bg-white/10 hover:bg-white/20 active:bg-white/25 text-white text-2xl"
+            }`}
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={onCancel}
+        className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-semibold transition cursor-pointer"
+      >
+        Cancel &amp; Return to Dashboard
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<"simulator" | "code" | "docs">("simulator");
   const [selectedFile, setSelectedFile] = useState<string>("MMM-ChoreTracker.js");
@@ -225,8 +347,6 @@ export default function App() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [isParentUnlocked, setIsParentUnlocked] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
   const [parentActiveTab, setParentActiveTab] = useState<"approvals" | "create_task" | "payout_engine" | "history">("approvals");
   const [payoutProfileId, setPayoutProfileId] = useState("child_01");
 
@@ -401,29 +521,6 @@ export default function App() {
       })
     );
     setCustomNoteText("");
-  };
-
-  // Handle PIN Keypad
-  const handlePinKey = (key: string) => {
-    setPinError("");
-    if (key === "Clear") {
-      setPinInput("");
-    } else if (key === "⌫") {
-      setPinInput((prev) => prev.slice(0, -1));
-    } else if (pinInput.length < 4) {
-      const next = pinInput + key;
-      setPinInput(next);
-      if (next.length === 4) {
-        if (next === "1234") {
-          setIsParentUnlocked(true);
-          setActiveModal("parent_panel");
-          setPinInput("");
-        } else {
-          setPinError("Incorrect PIN (Default is 1234)");
-          setPinInput("");
-        }
-      }
-    }
   };
 
   // Approve task
@@ -711,8 +808,6 @@ export default function App() {
                           if (isParentUnlocked) {
                             setActiveModal("parent_panel");
                           } else {
-                            setPinInput("");
-                            setPinError("");
                             setActiveModal("pin_pad");
                           }
                         }}
@@ -996,31 +1091,41 @@ module.exports = NodeHelper.create({ ... });`}
       </main>
 
       {/* =========================================================================
-          FULLSCREEN MODAL OVERLAYS (100% Viewport Takeover on Touch / Smart Mirror)
+          MODAL OVERLAYS (Fills Most of Screen with Modern Ambient Backdrop)
           ========================================================================= */}
 
-      {/* MODAL 1: Child Chores Modal (Full Screen Viewport Takeover) */}
+      {/* MODAL 1: Child Chores Modal (Fills Most of Screen) */}
       {activeModal === "child_chores" && selectedChildId && (
-        <div className="fixed inset-0 z-[100] w-screen h-screen bg-slate-950 text-slate-100 flex flex-col overflow-y-auto animate-in fade-in duration-150">
-          <div className="max-w-5xl w-full mx-auto p-4 sm:p-6 md:p-8 flex flex-col gap-6 flex-1">
-            {/* Fullscreen Header Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
+        <div
+          onClick={() => {
+            setActiveModal(null);
+            setSelectedChildId(null);
+          }}
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-[94vw] max-w-5xl h-[88vh] max-h-[92vh] bg-slate-900 border border-white/20 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          >
+            {/* Modal Header Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 sm:px-7 py-4 bg-slate-950/70 shrink-0">
               <div className="flex items-center gap-3.5">
                 <button
+                  type="button"
                   onClick={() => {
                     setActiveModal(null);
                     setSelectedChildId(null);
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-sm transition"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-sm transition cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Back to Dashboard</span>
                 </button>
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xl font-black text-white shadow-lg shadow-sky-500/20">
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xl font-black text-white shadow-lg shadow-sky-500/20">
                   {selectedChildId === "up_for_grabs" ? "⚡" : activeChild?.name.charAt(0)}
                 </div>
                 <div>
-                  <h2 className="font-bold text-2xl text-white tracking-tight">
+                  <h2 className="font-bold text-xl sm:text-2xl text-white tracking-tight">
                     {selectedChildId === "up_for_grabs" ? "Up For Grabs Bounties" : `${activeChild?.name}'s Chores`}
                   </h2>
                   <p className="text-xs text-slate-400">
@@ -1032,147 +1137,167 @@ module.exports = NodeHelper.create({ ... });`}
               </div>
 
               <button
+                type="button"
                 onClick={() => {
                   setActiveModal(null);
                   setSelectedChildId(null);
                 }}
-                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 text-lg font-bold transition"
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 text-lg font-bold transition cursor-pointer"
                 title="Close and return to dashboard"
               >
                 ✕
               </button>
             </div>
 
-            {/* Navigation Sub-Tabs */}
-            {selectedChildId !== "up_for_grabs" && (
-              <div className="flex gap-2 bg-slate-900 border border-white/10 p-1.5 rounded-2xl max-w-lg">
-                <button
-                  onClick={() => setChildModalTab("assigned")}
-                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition ${
-                    childModalTab === "assigned"
-                      ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {activeChild?.name}'s Tasks ({tasks.filter((t) => t.assigned_to === selectedChildId).length})
-                </button>
-                <button
-                  onClick={() => setChildModalTab("up_for_grabs")}
-                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition ${
-                    childModalTab === "up_for_grabs"
-                      ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  ⚡ Available Up For Grabs ({tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length})
-                </button>
-              </div>
-            )}
-
-            {/* Task Items List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {childTasks.length === 0 ? (
-                <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
-                  <div className="text-4xl mb-3">🎉</div>
-                  <h3 className="text-lg font-bold text-white mb-1">No chores pending here!</h3>
-                  <p className="text-slate-400 text-sm">All caught up! Great job!</p>
+            {/* Scrollable Content Body */}
+            <div className="p-4 sm:p-6 md:p-7 flex flex-col gap-5 flex-1 overflow-y-auto">
+              {/* Navigation Sub-Tabs */}
+              {selectedChildId !== "up_for_grabs" && (
+                <div className="flex gap-2 bg-slate-950/80 border border-white/10 p-1.5 rounded-2xl max-w-lg shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setChildModalTab("assigned")}
+                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+                      childModalTab === "assigned"
+                        ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {activeChild?.name}'s Tasks ({tasks.filter((t) => t.assigned_to === selectedChildId).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChildModalTab("up_for_grabs")}
+                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+                      childModalTab === "up_for_grabs"
+                        ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    ⚡ Available Up For Grabs ({tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length})
+                  </button>
                 </div>
-              ) : (
-                childTasks.map((task) => {
-                  const isRoutine = task.category === "routine";
-                  const isDone = isRoutine ? Boolean(task.is_completed_today) : Boolean(task.is_completed);
+              )}
 
-                  return (
-                    <div
-                      key={task.id}
-                      onClick={() => {
-                        setActiveTaskId(task.id);
-                        setActiveModal("task_detail");
-                      }}
-                      className={`group cursor-pointer rounded-2xl p-4 sm:p-5 border transition-all flex flex-col justify-between gap-3 select-none ${
-                        isDone
-                          ? "bg-emerald-950/20 border-emerald-500/40 opacity-80"
-                          : "bg-slate-900 border-white/10 hover:border-sky-400 hover:bg-slate-850 shadow-lg"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <h4
-                            className={`font-bold text-base leading-snug text-white mb-2 ${
-                              isDone ? "line-through text-slate-400" : ""
-                            }`}
-                          >
-                            {task.title}
-                          </h4>
+              {/* Task Items List */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {childTasks.length === 0 ? (
+                  <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
+                    <div className="text-4xl mb-3">🎉</div>
+                    <h3 className="text-lg font-bold text-white mb-1">No chores pending here!</h3>
+                    <p className="text-slate-400 text-sm">All caught up! Great job!</p>
+                  </div>
+                ) : (
+                  childTasks.map((task) => {
+                    const isRoutine = task.category === "routine";
+                    const isDone = isRoutine ? Boolean(task.is_completed_today) : Boolean(task.is_completed);
 
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {isRoutine ? (
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider">
-                                Routine Expectation
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
-                                ${task.reward_amount.toFixed(2)} Bounty
-                              </span>
-                            )}
+                    return (
+                      <div
+                        key={task.id}
+                        onClick={() => {
+                          setActiveTaskId(task.id);
+                          setActiveModal("task_detail");
+                        }}
+                        className={`group cursor-pointer rounded-2xl p-4 sm:p-5 border transition-all flex flex-col justify-between gap-3 select-none ${
+                          isDone
+                            ? "bg-emerald-950/20 border-emerald-500/40 opacity-80"
+                            : "bg-slate-900 border-white/10 hover:border-sky-400 hover:bg-slate-850 shadow-lg"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <h4
+                              className={`font-bold text-base leading-snug text-white mb-2 ${
+                                isDone ? "line-through text-slate-400" : ""
+                              }`}
+                            >
+                              {task.title}
+                            </h4>
 
-                            {!isRoutine && task.is_completed && (
-                              task.is_approved ? (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500 text-emerald-400">
-                                  ✓ Approved for Payout
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {isRoutine ? (
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider">
+                                  Routine Expectation
                                 </span>
                               ) : (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500 text-amber-400">
-                                  ⏳ Needs Parent Approval
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
+                                  ${task.reward_amount.toFixed(2)} Bounty
                                 </span>
-                              )
-                            )}
+                              )}
+
+                              {!isRoutine && task.is_completed && (
+                                task.is_approved ? (
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500 text-emerald-400">
+                                    ✓ Approved for Payout
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500 text-amber-400">
+                                    ⏳ Needs Parent Approval
+                                  </span>
+                                )
+                              )}
+                            </div>
                           </div>
+
+                          {/* Touch Complete Circle Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleInitiateComplete(task.id);
+                            }}
+                            className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-xl font-bold transition shrink-0 cursor-pointer ${
+                              isDone
+                                ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+                                : "border-white/20 hover:border-sky-400 bg-white/5 text-transparent hover:text-white/40"
+                            }`}
+                            title={isDone ? "Mark incomplete" : "Mark completed"}
+                          >
+                            ✓
+                          </button>
                         </div>
 
-                        {/* Touch Complete Circle Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleInitiateComplete(task.id);
-                          }}
-                          className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-xl font-bold transition shrink-0 ${
-                            isDone
-                              ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/30"
-                              : "border-white/20 hover:border-sky-400 bg-white/5 text-transparent hover:text-white/40"
-                          }`}
-                          title={isDone ? "Mark incomplete" : "Mark completed"}
-                        >
-                          ✓
-                        </button>
+                        <div className="flex items-center justify-between text-xs text-slate-400 pt-2.5 border-t border-white/5">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
+                            {task.notes.length} {task.notes.length === 1 ? "note" : "notes"}
+                          </span>
+                          <span className="text-sky-400 font-semibold group-hover:translate-x-0.5 transition flex items-center gap-1">
+                            Details &amp; Notes →
+                          </span>
+                        </div>
                       </div>
-
-                      <div className="flex items-center justify-between text-xs text-slate-400 pt-2.5 border-t border-white/5">
-                        <span className="flex items-center gap-1.5 font-medium">
-                          <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-                          {task.notes.length} {task.notes.length === 1 ? "note" : "notes"}
-                        </span>
-                        <span className="text-sky-400 font-semibold group-hover:translate-x-0.5 transition flex items-center gap-1">
-                          Details &amp; Notes →
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL 2: Task Detail & Threaded Notes Modal (Full Screen Viewport Takeover) */}
+      {/* MODAL 2: Task Detail & Threaded Notes Modal (Fills Most of Screen) */}
       {activeModal === "task_detail" && activeTask && (
-        <div className="fixed inset-0 z-[100] w-screen h-screen bg-slate-950 text-slate-100 flex flex-col overflow-y-auto animate-in fade-in duration-150">
-          <div className="max-w-2xl w-full mx-auto p-4 sm:p-6 md:p-8 flex flex-col gap-5 flex-1">
+        <div
+          onClick={() => {
+            if (selectedChildId) {
+              setActiveModal("child_chores");
+            } else {
+              setActiveModal(null);
+            }
+          }}
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-[92vw] max-w-2xl max-h-[88vh] bg-slate-900 border border-white/20 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 sm:px-6 py-4 bg-slate-950/70 shrink-0">
               <div className="flex items-center gap-3">
                 <button
+                  type="button"
                   onClick={() => {
                     if (selectedChildId) {
                       setActiveModal("child_chores");
@@ -1180,14 +1305,15 @@ module.exports = NodeHelper.create({ ... });`}
                       setActiveModal(null);
                     }
                   }}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-xs transition"
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-xs transition cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>{selectedChildId ? "Back to Chores" : "Back"}</span>
                 </button>
-                <h3 className="font-bold text-xl text-white">{activeTask.title}</h3>
+                <h3 className="font-bold text-lg sm:text-xl text-white">{activeTask.title}</h3>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   if (selectedChildId) {
                     setActiveModal("child_chores");
@@ -1195,130 +1321,149 @@ module.exports = NodeHelper.create({ ... });`}
                     setActiveModal(null);
                   }
                 }}
-                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold"
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Info Card */}
-            <div className="bg-slate-900 border border-white/10 rounded-2xl p-4 space-y-2.5 text-xs sm:text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Type:</span>
-                <strong className={activeTask.category === "routine" ? "text-sky-400" : "text-emerald-400"}>
-                  {activeTask.category === "routine" ? "Routine Expectation" : "Monetized Bounty"}
-                </strong>
+            {/* Scrollable Body */}
+            <div className="p-5 sm:p-6 flex flex-col gap-4 flex-1 overflow-y-auto">
+              {/* Info Card */}
+              <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-4 space-y-2.5 text-xs sm:text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Type:</span>
+                  <strong className={activeTask.category === "routine" ? "text-sky-400" : "text-emerald-400"}>
+                    {activeTask.category === "routine" ? "Routine Expectation" : "Monetized Bounty"}
+                  </strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Reward:</span>
+                  <strong className="text-emerald-400 font-bold text-base">
+                    {activeTask.category === "routine" ? "$0.00" : `$${activeTask.reward_amount.toFixed(2)}`}
+                  </strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Assigned To:</span>
+                  <strong className="text-white">
+                    {activeTask.assigned_to === "up_for_grabs"
+                      ? "⚡ Up For Grabs"
+                      : profiles.find((p) => p.id === activeTask.assigned_to)?.name || "Assigned"}
+                  </strong>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Reward:</span>
-                <strong className="text-emerald-400 font-bold text-base">
-                  {activeTask.category === "routine" ? "$0.00" : `$${activeTask.reward_amount.toFixed(2)}`}
-                </strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Assigned To:</span>
-                <strong className="text-white">
-                  {activeTask.assigned_to === "up_for_grabs"
-                    ? "⚡ Up For Grabs"
-                    : profiles.find((p) => p.id === activeTask.assigned_to)?.name || "Assigned"}
-                </strong>
-              </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3">
-              {activeTask.assigned_to === "up_for_grabs" && selectedChildId && selectedChildId !== "up_for_grabs" && (
-                <button
-                  onClick={() => handleClaimChore(activeTask.id)}
-                  className="flex-1 py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-purple-600/20"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Claim for {activeChild?.name}
-                </button>
-              )}
-
-              {(() => {
-                const isDone = activeTask.category === "routine"
-                  ? Boolean(activeTask.is_completed_today)
-                  : Boolean(activeTask.is_completed);
-
-                return (
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                {activeTask.assigned_to === "up_for_grabs" && selectedChildId && selectedChildId !== "up_for_grabs" && (
                   <button
-                    onClick={() => {
-                      handleInitiateComplete(activeTask.id);
-                    }}
-                    className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition shadow-md ${
-                      isDone
-                        ? "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10"
-                        : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30"
-                    }`}
+                    type="button"
+                    onClick={() => handleClaimChore(activeTask.id)}
+                    className="flex-1 py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-purple-600/20 cursor-pointer"
                   >
-                    {isDone ? "↩ Mark as Incomplete" : "✓ Mark as Completed"}
+                    <Sparkles className="w-4 h-4" />
+                    Claim for {activeChild?.name}
                   </button>
-                );
-              })()}
-            </div>
+                )}
 
-            {/* Threaded Notes Feed */}
-            <div className="flex-1 flex flex-col gap-2">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Threaded Notes &amp; Updates
-              </h4>
-              <div className="bg-slate-900 border border-white/10 rounded-2xl p-4 flex-1 min-h-[160px] max-h-64 overflow-y-auto space-y-2.5">
-                {activeTask.notes.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-6">
-                    No notes posted yet. Leave instructions or completion updates!
-                  </p>
-                ) : (
-                  activeTask.notes.map((n, i) => (
-                    <div
-                      key={i}
-                      className={`p-3 rounded-xl text-xs ${
-                        n.author.toLowerCase().includes("parent")
-                          ? "bg-purple-950/40 border-l-4 border-purple-500"
-                          : "bg-slate-800 border-l-4 border-sky-400"
+                {(() => {
+                  const isDone = activeTask.category === "routine"
+                    ? Boolean(activeTask.is_completed_today)
+                    : Boolean(activeTask.is_completed);
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleInitiateComplete(activeTask.id);
+                      }}
+                      className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition shadow-md cursor-pointer ${
+                        isDone
+                          ? "bg-slate-850 hover:bg-slate-800 text-slate-200 border border-white/10"
+                          : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30"
                       }`}
                     >
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
-                        <strong className="text-white text-xs">{n.author}</strong>
-                        <span>{new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
-                      <p className="text-slate-200">{n.text}</p>
-                    </div>
-                  ))
-                )}
+                      {isDone ? "↩ Mark as Incomplete" : "✓ Mark as Completed"}
+                    </button>
+                  );
+                })()}
               </div>
-            </div>
 
-            {/* Add Note Input */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Add instructions or update note..."
-                value={customNoteText}
-                onChange={(e) => setCustomNoteText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddNote(activeTask.id, customNoteText);
-                }}
-                className="flex-1 bg-slate-900 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
-              />
-              <button
-                onClick={() => handleAddNote(activeTask.id, customNoteText)}
-                className="bg-sky-500 hover:bg-sky-400 text-white font-bold px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-1.5 transition"
-              >
-                <Send className="w-4 h-4" />
-                <span>Post</span>
-              </button>
+              {/* Threaded Notes Feed */}
+              <div className="flex-1 flex flex-col gap-2">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Threaded Notes &amp; Updates
+                </h4>
+                <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-4 flex-1 min-h-[140px] max-h-56 overflow-y-auto space-y-2.5">
+                  {activeTask.notes.length === 0 ? (
+                    <p className="text-xs text-slate-500 text-center py-6">
+                      No notes posted yet. Leave instructions or completion updates!
+                    </p>
+                  ) : (
+                    activeTask.notes.map((n, i) => (
+                      <div
+                        key={i}
+                        className={`p-3 rounded-xl text-xs ${
+                          n.author.toLowerCase().includes("parent")
+                            ? "bg-purple-950/40 border-l-4 border-purple-500"
+                            : "bg-slate-800 border-l-4 border-sky-400"
+                        }`}
+                      >
+                        <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+                          <strong className="text-white text-xs">{n.author}</strong>
+                          <span>{new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <p className="text-slate-200">{n.text}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Add Note Input */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add instructions or update note..."
+                  value={customNoteText}
+                  onChange={(e) => setCustomNoteText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAddNote(activeTask.id, customNoteText);
+                  }}
+                  className="flex-1 bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddNote(activeTask.id, customNoteText)}
+                  className="bg-sky-500 hover:bg-sky-400 text-white font-bold px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Post</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL 3: Who Completed This? (Attribution Modal - Full Screen Viewport Takeover) */}
+      {/* MODAL 3: Who Completed This? (Attribution Modal - Fills Most of Screen) */}
       {activeModal === "who_completed" && completingTask && (
-        <div className="fixed inset-0 z-[100] w-screen h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
-          <div className="max-w-md w-full bg-slate-900 border border-purple-500/40 rounded-3xl p-6 sm:p-8 flex flex-col gap-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+        <div
+          onClick={() => {
+            setCompletingTaskId(null);
+            if (selectedChildId) {
+              setActiveModal("child_chores");
+            } else {
+              setActiveModal(null);
+            }
+          }}
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-[92vw] max-w-md max-h-[88vh] bg-slate-900 border border-purple-500/40 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 bg-slate-950/70 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center text-base font-bold">
                   ⭐
@@ -1329,6 +1474,7 @@ module.exports = NodeHelper.create({ ... });`}
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setCompletingTaskId(null);
                   if (selectedChildId) {
@@ -1337,162 +1483,130 @@ module.exports = NodeHelper.create({ ... });`}
                     setActiveModal(null);
                   }
                 }}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 text-xs font-bold"
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 text-xs font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-sm text-white">{completingTask.title}</div>
-                <div className="text-xs text-slate-400">
-                  {completingTask.category === "routine" ? "Routine Expectation" : "Up For Grabs Bounty"}
+            <div className="p-6 flex flex-col gap-5 overflow-y-auto">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-sm text-white">{completingTask.title}</div>
+                  <div className="text-xs text-slate-400">
+                    {completingTask.category === "routine" ? "Routine Expectation" : "Up For Grabs Bounty"}
+                  </div>
+                </div>
+                <div className="text-emerald-400 font-bold text-base px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                  {completingTask.category === "routine" ? "$0.00" : `$${completingTask.reward_amount.toFixed(2)}`}
                 </div>
               </div>
-              <div className="text-emerald-400 font-bold text-base px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
-                {completingTask.category === "routine" ? "$0.00" : `$${completingTask.reward_amount.toFixed(2)}`}
-              </div>
-            </div>
 
-            <p className="text-xs text-slate-300 font-medium">
-              Touch the child who finished this task:
-            </p>
+              <p className="text-xs text-slate-300 font-medium">
+                Touch the child who finished this task:
+              </p>
 
-            <div className="grid grid-cols-3 gap-3">
-              {profiles.map((p, idx) => {
-                const grad = avatarGradients[idx % avatarGradients.length];
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => handleCompleteAsChild(completingTask.id, p.id)}
-                    className="group p-3.5 rounded-2xl border border-white/10 bg-slate-800/90 hover:bg-slate-750 hover:border-sky-400 hover:scale-105 active:scale-95 transition-all flex flex-col items-center gap-2 cursor-pointer shadow-md text-center"
-                  >
-                    <div
-                      className={`w-12 h-12 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center text-base font-black text-white shadow-md group-hover:shadow-sky-500/30 transition`}
+              <div className="grid grid-cols-3 gap-3">
+                {profiles.map((p, idx) => {
+                  const grad = avatarGradients[idx % avatarGradients.length];
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleCompleteAsChild(completingTask.id, p.id)}
+                      className="group p-3.5 rounded-2xl border border-white/10 bg-slate-800/90 hover:bg-slate-750 hover:border-sky-400 hover:scale-105 active:scale-95 transition-all flex flex-col items-center gap-2 cursor-pointer shadow-md text-center"
                     >
-                      {p.name.charAt(0)}
-                    </div>
-                    <span className="text-xs font-bold text-white group-hover:text-sky-300 transition">
-                      {p.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              onClick={() => {
-                setCompletingTaskId(null);
-                if (selectedChildId) {
-                  setActiveModal("child_chores");
-                } else {
-                  setActiveModal(null);
-                }
-              }}
-              className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 4: 4-Digit PIN Keypad (Full Screen Viewport Takeover) */}
-      {activeModal === "pin_pad" && (
-        <div className="fixed inset-0 z-[100] w-screen h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
-          <div className="max-w-sm w-full bg-slate-900 border border-white/20 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-5 shadow-2xl">
-            <div className="w-full flex justify-between items-center border-b border-white/10 pb-4">
-              <div className="flex items-center gap-2 font-bold text-lg text-white">
-                <Lock className="w-5 h-5 text-sky-400" />
-                Parent Access
+                      <div
+                        className={`w-12 h-12 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center text-base font-black text-white shadow-md group-hover:shadow-sky-500/30 transition`}
+                      >
+                        {p.name.charAt(0)}
+                      </div>
+                      <span className="text-xs font-bold text-white group-hover:text-sky-300 transition">
+                        {p.name}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
+
               <button
+                type="button"
                 onClick={() => {
-                  setActiveModal(null);
-                  setPinInput("");
+                  setCompletingTaskId(null);
+                  if (selectedChildId) {
+                    setActiveModal("child_chores");
+                  } else {
+                    setActiveModal(null);
+                  }
                 }}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold"
+                className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition cursor-pointer"
               >
-                ✕
+                Cancel
               </button>
             </div>
-
-            <p className="text-xs text-slate-400 text-center">
-              Enter your 4-digit security PIN to unlock approvals and payouts.
-            </p>
-
-            <div className="flex gap-3 my-1">
-              {[0, 1, 2, 3].map((idx) => (
-                <div
-                  key={idx}
-                  className={`w-5 h-5 rounded-full border-2 transition-all ${
-                    idx < pinInput.length
-                      ? "bg-sky-400 border-sky-400 scale-110 shadow-lg shadow-sky-400/50"
-                      : "border-slate-600 bg-transparent"
-                  }`}
-                />
-              ))}
-            </div>
-
-            {pinError && <div className="text-xs text-red-400 font-semibold">{pinError}</div>}
-
-            <div className="grid grid-cols-3 gap-3 w-full">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0", "⌫"].map((k) => (
-                <button
-                  key={k}
-                  onClick={() => handlePinKey(k)}
-                  className={`h-16 rounded-2xl font-bold flex items-center justify-center active:scale-95 transition ${
-                    k === "Clear" || k === "⌫"
-                      ? "bg-white/5 hover:bg-white/10 text-slate-300 text-sm"
-                      : "bg-white/10 hover:bg-white/20 text-white text-2xl"
-                  }`}
-                >
-                  {k}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => {
-                setActiveModal(null);
-                setPinInput("");
-              }}
-              className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-semibold transition"
-            >
-              Cancel &amp; Return to Dashboard
-            </button>
           </div>
         </div>
       )}
 
-      {/* MODAL 5: Parent Administration Console (Full Screen Viewport Takeover) */}
+      {/* MODAL 4: 4-Digit PIN Keypad (Fills Most of Screen with Zero Flashing) */}
+      {activeModal === "pin_pad" && (
+        <div
+          onClick={() => {
+            setActiveModal(null);
+          }}
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+        >
+          <PinPadModal
+            onSuccess={() => {
+              setIsParentUnlocked(true);
+              setActiveModal("parent_panel");
+            }}
+            onCancel={() => {
+              setActiveModal(null);
+            }}
+          />
+        </div>
+      )}
+
+      {/* MODAL 5: Parent Administration Console (Fills Most of Screen) */}
       {activeModal === "parent_panel" && (
-        <div className="fixed inset-0 z-[100] w-screen h-screen bg-slate-950 text-slate-100 flex flex-col overflow-y-auto animate-in fade-in duration-150">
-          <div className="max-w-5xl w-full mx-auto p-4 sm:p-6 md:p-8 flex flex-col gap-6 flex-1">
+        <div
+          onClick={() => {
+            setIsParentUnlocked(false);
+            setActiveModal(null);
+          }}
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 md:p-8"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-[94vw] max-w-5xl h-[88vh] max-h-[92vh] bg-slate-900 border border-purple-500/30 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          >
             {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 sm:px-7 py-4 bg-slate-950/70 shrink-0">
               <div className="flex items-center gap-3">
                 <span className="text-3xl">👑</span>
                 <div>
-                  <h2 className="font-bold text-2xl text-white tracking-tight">Parent Administration Console</h2>
+                  <h2 className="font-bold text-xl sm:text-2xl text-white tracking-tight">Parent Administration Console</h2>
                   <p className="text-xs text-slate-400">Review approvals, create tasks, process payouts &amp; audit history</p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setIsParentUnlocked(false);
                   setActiveModal(null);
                 }}
-                className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 transition shadow-lg shadow-purple-600/20"
+                className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 transition shadow-lg shadow-purple-600/20 cursor-pointer"
               >
                 <Lock className="w-4 h-4" />
                 Lock &amp; Exit
               </button>
             </div>
 
-            {/* Console Navigation Tabs */}
-            <div className="flex bg-slate-900 border border-white/10 p-1.5 rounded-2xl gap-1.5 overflow-x-auto">
+            {/* Scrollable Body */}
+            <div className="p-4 sm:p-6 md:p-7 flex flex-col gap-5 flex-1 overflow-y-auto">
+              {/* Console Navigation Tabs */}
+              <div className="flex bg-slate-950/80 border border-white/10 p-1.5 rounded-2xl gap-1.5 overflow-x-auto shrink-0">
               {[
                 { id: "approvals", label: "Task Approvals" },
                 { id: "create_task", label: "Create Chore" },
@@ -1769,6 +1883,7 @@ module.exports = NodeHelper.create({ ... });`}
                 )}
               </div>
             )}
+            </div>
           </div>
         </div>
       )}

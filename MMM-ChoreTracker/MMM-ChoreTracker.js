@@ -125,11 +125,20 @@ Module.register("MMM-ChoreTracker", {
           this.pinError = "";
           this.pinInput = "";
           this.activeModal = "parent_panel";
+          this.updateDom(150);
         } else {
           this.pinError = (payload && payload.message) || "Invalid PIN. Try again.";
           this.pinInput = "";
+          const overlay = document.getElementById("ct-body-modal-overlay");
+          if (overlay && this.activeModal === "pin_pad") {
+            const errEl = overlay.querySelector(".ct-pin-error");
+            if (errEl) errEl.innerText = this.pinError;
+            const dots = overlay.querySelectorAll(".ct-pin-dot");
+            dots.forEach((dot) => dot.classList.remove("filled"));
+          } else {
+            this.updateDom(150);
+          }
         }
-        this.updateDom(200);
         break;
 
       case "PAYOUT_PROCESSED":
@@ -972,7 +981,10 @@ Module.register("MMM-ChoreTracker", {
     backdrop.className = "ct-modal-backdrop";
 
     const modal = document.createElement("div");
-    modal.className = "ct-modal-window";
+    modal.className = "ct-modal-window ct-modal-medium";
+    modal.addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
 
     const header = document.createElement("div");
     header.className = "ct-modal-header";
@@ -1106,7 +1118,10 @@ Module.register("MMM-ChoreTracker", {
     backdrop.className = "ct-modal-backdrop";
 
     const modal = document.createElement("div");
-    modal.className = "ct-modal-window";
+    modal.className = "ct-modal-window ct-modal-compact";
+    modal.addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
 
     // Header
     const header = document.createElement("div");
@@ -1156,6 +1171,18 @@ Module.register("MMM-ChoreTracker", {
     errText.innerText = this.pinError;
     body.appendChild(errText);
 
+    function updatePinDisplayInPlace() {
+      const dots = pinDisplay.querySelectorAll(".ct-pin-dot");
+      dots.forEach((dot, idx) => {
+        if (idx < self.pinInput.length) {
+          dot.classList.add("filled");
+        } else {
+          dot.classList.remove("filled");
+        }
+      });
+      errText.innerText = self.pinError || "";
+    }
+
     // Numpad 0-9
     const keypad = document.createElement("div");
     keypad.className = "ct-numpad-grid";
@@ -1167,7 +1194,8 @@ Module.register("MMM-ChoreTracker", {
       btn.className = `ct-num-key ${key === "Clear" || key === "⌫" ? "action-key" : ""}`;
       btn.innerText = key;
 
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
         self.pinError = "";
         if (key === "Clear") {
           self.pinInput = "";
@@ -1180,7 +1208,8 @@ Module.register("MMM-ChoreTracker", {
             self.sendSocketNotification("VERIFY_PARENT_PIN", { pin: self.pinInput });
           }
         }
-        self.updateDom(50);
+        // Direct in-place UI update: eliminates full screen flashing and lag!
+        updatePinDisplayInPlace();
       });
 
       keypad.appendChild(btn);
@@ -1192,9 +1221,7 @@ Module.register("MMM-ChoreTracker", {
 
     backdrop.addEventListener("click", function (e) {
       if (e.target === backdrop) {
-        self.activeModal = null;
-        self.pinInput = "";
-        self.updateDom(150);
+        self.closeModal();
       }
     });
 
