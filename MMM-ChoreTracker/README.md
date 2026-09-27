@@ -17,9 +17,9 @@
 
 3. **Kids Dashboard Main View & Modal Navigation**:
    - The main mirror screen cleanly displays compact, sleek cards for each child (e.g. Alex, Maya, Leo) and an "Up For Grabs" open bounty card with their avatar and daily completion progress.
-   - Touching any child's name opens a dedicated modal displaying their specific chore list (routine expectations and monetized bounties) with complete/uncomplete toggles, threaded notes, and bounty claiming.
-   - **Up For Grabs Attribution Prompt ("Who Did It?")**: Whenever an open bounty or up-for-grabs chore is marked completed, a modal prompts for the child who did the work, ensuring the reward and completion credit are accurately attributed to them for parental audit and payout.
-   - Touching the close (✕) button returns directly to the minimalist kids dashboard.
+   - Touching any child's name, task, or function opens a dedicated full-screen modal that takes over the entire screen for a seamless, edge-to-edge touchscreen experience with clear navigation and close buttons.
+   - **Up For Grabs Attribution Prompt ("Who Did It?")**: Whenever an open bounty or up-for-grabs chore is marked completed, a full-screen modal prompts for the child who did the work, ensuring the reward and completion credit are accurately attributed to them for parental audit and payout.
+   - Touching the back (←) or close (✕) button returns directly to the minimalist kids dashboard.
 
 4. **Clear Visual Distinction & Badging**:
    - **Routine Expectations**: Non-monetary standard family duties ($0.00) with scheduled recurring days.

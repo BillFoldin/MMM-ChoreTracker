@@ -512,47 +512,55 @@
 }
 
 /* =========================================================================
-   Modal Dialog Overlays (Full Screen / Centered on Touchscreen)
+   Modal Dialog Overlays (Full Screen Viewport Takeover)
    ========================================================================= */
 .ct-modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  padding: 20px;
-  box-sizing: border-box;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #06090f !important; /* Solid high-contrast deep background, NO backdrop-filter */
+  z-index: 999999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
 }
 
 .ct-modal-window {
-  background: #0d1322;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--ct-radius-lg);
-  width: 100%;
-  max-width: 640px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-  animation: ctModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #090d16 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: none !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  animation: ctModalIn 0.15s ease-out;
 }
 
 @keyframes ctModalIn {
   from {
     opacity: 0;
-    transform: scale(0.95) translateY(10px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0);
   }
 }
 
@@ -560,9 +568,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 18px 24px;
+  padding: 20px 28px;
   border-bottom: 1px solid var(--ct-border);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .ct-modal-title {
@@ -572,34 +583,43 @@
   color: #fff;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .ct-btn-close-modal {
-  width: 44px;
+  min-width: 44px;
   height: 44px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--ct-radius-md);
+  background: rgba(255, 255, 255, 0.1);
   border: 1px solid var(--ct-border);
   color: #fff;
-  font-size: 22px;
+  font-size: 18px;
+  font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 16px;
+  gap: 6px;
+  transition: all 0.15s ease;
 }
 
 .ct-btn-close-modal:active {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(0.97);
 }
 
 .ct-modal-body {
-  padding: 24px;
+  padding: 24px 28px;
   overflow-y: auto;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* =========================================================================

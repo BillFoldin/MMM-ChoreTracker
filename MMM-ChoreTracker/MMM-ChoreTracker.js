@@ -37,8 +37,9 @@ Module.register("MMM-ChoreTracker", {
   payoutRecords: [],
   selectedProfileId: null, // active child ID when viewing child chore modal
   childModalTab: "assigned", // "assigned" | "up_for_grabs"
-  activeModal: null, // null | 'child_chores' | 'task_detail' | 'pin_pad' | 'parent_panel'
+  activeModal: null, // null | 'child_chores' | 'task_detail' | 'who_completed' | 'pin_pad' | 'parent_panel'
   activeTaskId: null,
+  completingTaskId: null,
   isParentUnlocked: false,
   pinInput: "",
   pinError: "",
@@ -146,9 +147,27 @@ Module.register("MMM-ChoreTracker", {
   /**
    * Generates the pure vanilla DOM tree for MagicMirror²
    */
+  closeModal: function () {
+    const existing = document.getElementById("ct-body-modal-overlay");
+    if (existing) existing.remove();
+    this.activeModal = null;
+    this.selectedProfileId = null;
+    this.activeTaskId = null;
+    this.completingTaskId = null;
+    this.pinInput = "";
+    this.pinError = "";
+    this.updateDom(150);
+  },
+
   getDom: function () {
     const wrapper = document.createElement("div");
     wrapper.className = "mmm-choretracker";
+
+    // Clean up any stale body modal overlay
+    const existing = document.getElementById("ct-body-modal-overlay");
+    if (existing) {
+      existing.remove();
+    }
 
     // Header bar
     wrapper.appendChild(this.buildHeader());
@@ -156,15 +175,27 @@ Module.register("MMM-ChoreTracker", {
     // Main screen: Kids Dashboard (only displays names and summary cards of kids)
     wrapper.appendChild(this.buildKidsDashboard());
 
-    // Overlay Modals
-    if (this.activeModal === "child_chores" && this.selectedProfileId) {
-      wrapper.appendChild(this.buildChildChoresModal(this.selectedProfileId));
+    // Overlay Modals - full screen viewport takeover mounted directly to document.body
+    let modalEl = null;
+    if (this.activeModal === "who_completed" && this.completingTaskId) {
+      modalEl = this.buildWhoCompletedModal(this.completingTaskId);
+    } else if (this.activeModal === "child_chores" && this.selectedProfileId) {
+      modalEl = this.buildChildChoresModal(this.selectedProfileId);
     } else if (this.activeModal === "task_detail" && this.activeTaskId) {
-      wrapper.appendChild(this.buildTaskModal(this.activeTaskId));
+      modalEl = this.buildTaskModal(this.activeTaskId);
     } else if (this.activeModal === "pin_pad") {
-      wrapper.appendChild(this.buildPinModal());
+      modalEl = this.buildPinModal();
     } else if (this.activeModal === "parent_panel") {
-      wrapper.appendChild(this.buildParentPanel());
+      modalEl = this.buildParentPanel();
+    }
+
+    if (modalEl) {
+      modalEl.id = "ct-body-modal-overlay";
+      if (typeof document !== "undefined" && document.body) {
+        document.body.appendChild(modalEl);
+      } else {
+        wrapper.appendChild(modalEl);
+      }
     }
 
     return wrapper;
@@ -411,36 +442,48 @@ Module.register("MMM-ChoreTracker", {
 
     const modal = document.createElement("div");
     modal.className = "ct-modal-window";
-    modal.style.maxWidth = "700px";
 
     // Header
     const header = document.createElement("div");
     header.className = "ct-modal-header";
+
+    const headerLeft = document.createElement("div");
+    headerLeft.style.display = "flex";
+    headerLeft.style.alignItems = "center";
+    headerLeft.style.gap = "14px";
+
+    const backBtn = document.createElement("button");
+    backBtn.className = "ct-btn-close-modal";
+    backBtn.innerHTML = `← Back`;
+    backBtn.setAttribute("aria-label", "Back to dashboard");
+    backBtn.addEventListener("click", function () {
+      self.closeModal();
+    });
+    headerLeft.appendChild(backBtn);
 
     const titleGroup = document.createElement("div");
     titleGroup.className = "ct-modal-title";
 
     const initial = isUpForGrabsView ? "⚡" : (childName || "C").charAt(0).toUpperCase();
     titleGroup.innerHTML = `
-      <div class="ct-avatar-circle" style="background:${isUpForGrabsView ? "#8b5cf6" : "#3b82f6"}; width:36px; height:36px; font-size:16px;">
+      <div class="ct-avatar-circle" style="background:${isUpForGrabsView ? "#8b5cf6" : "#3b82f6"}; width:38px; height:38px; font-size:16px;">
         ${initial}
       </div>
       <div>
-        <div style="font-size:19px; line-height:1.2;">${childName}'s Chores</div>
-        <div style="font-size:12px; font-weight:500; color:#94a3b8;">Tap to complete or view notes</div>
+        <div style="font-size:19px; line-height:1.2; font-weight:700;">${childName}'s Chores</div>
+        <div style="font-size:12px; font-weight:500; color:#94a3b8;">${isUpForGrabsView ? "Open bounties for anyone in the family" : "Tap checkmark to complete • Tap chore for notes"}</div>
       </div>
     `;
-    header.appendChild(titleGroup);
+    headerLeft.appendChild(titleGroup);
+    header.appendChild(headerLeft);
 
     // Close button (returns to the main kids dashboard)
     const closeBtn = document.createElement("button");
     closeBtn.className = "ct-btn-close-modal";
-    closeBtn.innerText = "✕";
+    closeBtn.innerText = "✕ Close";
     closeBtn.setAttribute("aria-label", "Close");
     closeBtn.addEventListener("click", function () {
-      self.activeModal = null;
-      self.selectedProfileId = null;
-      self.updateDom(150);
+      self.closeModal();
     });
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -564,10 +607,17 @@ Module.register("MMM-ChoreTracker", {
         checkBtn.innerHTML = isDone ? "✓" : "";
         checkBtn.addEventListener("click", function (e) {
           e.stopPropagation();
-          self.sendSocketNotification("TOGGLE_TASK_COMPLETION", {
-            taskId: task.id,
-            profileId: childId
-          });
+          // If task is up_for_grabs or unassigned, and not yet completed, prompt who did it!
+          if ((task.assigned_to === "up_for_grabs" || childId === "up_for_grabs" || !task.assigned_to) && !isDone) {
+            self.completingTaskId = task.id;
+            self.activeModal = "who_completed";
+            self.updateDom(150);
+          } else {
+            self.sendSocketNotification("TOGGLE_TASK_COMPLETION", {
+              taskId: task.id,
+              profileId: childId
+            });
+          }
         });
         cardTop.appendChild(checkBtn);
         card.appendChild(cardTop);
@@ -651,24 +701,38 @@ Module.register("MMM-ChoreTracker", {
     const header = document.createElement("div");
     header.className = "ct-modal-header";
 
-    const title = document.createElement("h3");
-    title.className = "ct-modal-title";
-    title.innerText = task.title;
-    header.appendChild(title);
+    const headerLeft = document.createElement("div");
+    headerLeft.style.display = "flex";
+    headerLeft.style.alignItems = "center";
+    headerLeft.style.gap = "14px";
 
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "ct-btn-close-modal";
-    closeBtn.innerText = "✕";
-    closeBtn.addEventListener("click", function () {
-      // Return to child modal if a child was selected, otherwise close
+    const backBtn = document.createElement("button");
+    backBtn.className = "ct-btn-close-modal";
+    backBtn.innerHTML = `← Back to Chores`;
+    backBtn.setAttribute("aria-label", "Back to Chores");
+    backBtn.addEventListener("click", function () {
       if (self.selectedProfileId) {
         self.activeModal = "child_chores";
         self.activeTaskId = null;
+        self.updateDom(150);
       } else {
-        self.activeModal = null;
-        self.activeTaskId = null;
+        self.closeModal();
       }
-      self.updateDom(150);
+    });
+    headerLeft.appendChild(backBtn);
+
+    const title = document.createElement("h3");
+    title.className = "ct-modal-title";
+    title.innerText = task.title;
+    headerLeft.appendChild(title);
+    header.appendChild(headerLeft);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "ct-btn-close-modal";
+    closeBtn.innerText = "✕ Close";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.addEventListener("click", function () {
+      self.closeModal();
     });
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -748,17 +812,23 @@ Module.register("MMM-ChoreTracker", {
     completeBtn.style.flex = "1";
     completeBtn.innerText = isDone ? "↩ Mark as Incomplete" : "✓ Mark as Completed";
     completeBtn.addEventListener("click", function () {
-      self.sendSocketNotification("TOGGLE_TASK_COMPLETION", {
-        taskId: task.id,
-        profileId: self.selectedProfileId || "child_01"
-      });
-      // Return to child modal if active
-      if (self.selectedProfileId) {
-        self.activeModal = "child_chores";
+      if ((task.assigned_to === "up_for_grabs" || self.selectedProfileId === "up_for_grabs" || !task.assigned_to) && !isDone) {
+        self.completingTaskId = task.id;
+        self.activeModal = "who_completed";
+        self.updateDom(150);
       } else {
-        self.activeModal = null;
+        self.sendSocketNotification("TOGGLE_TASK_COMPLETION", {
+          taskId: task.id,
+          profileId: self.selectedProfileId || "child_01"
+        });
+        // Return to child modal if active
+        if (self.selectedProfileId) {
+          self.activeModal = "child_chores";
+        } else {
+          self.activeModal = null;
+        }
+        self.updateDom(200);
       }
-      self.updateDom(200);
     });
     actionsRow.appendChild(completeBtn);
     body.appendChild(actionsRow);
@@ -889,6 +959,145 @@ Module.register("MMM-ChoreTracker", {
   },
 
   /**
+   * Attribution Modal: "Who completed this chore?"
+   * Displayed when completing an unassigned / up-for-grabs task so the reward
+   * and completion are accurately attributed to the child who did it.
+   */
+  buildWhoCompletedModal: function (taskId) {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task) return document.createElement("div");
+
+    const self = this;
+    const backdrop = document.createElement("div");
+    backdrop.className = "ct-modal-backdrop";
+
+    const modal = document.createElement("div");
+    modal.className = "ct-modal-window";
+
+    const header = document.createElement("div");
+    header.className = "ct-modal-header";
+
+    const headerLeft = document.createElement("div");
+    headerLeft.style.display = "flex";
+    headerLeft.style.alignItems = "center";
+    headerLeft.style.gap = "14px";
+
+    const backBtn = document.createElement("button");
+    backBtn.className = "ct-btn-close-modal";
+    backBtn.innerHTML = `← Back`;
+    backBtn.setAttribute("aria-label", "Back");
+    backBtn.addEventListener("click", function () {
+      self.completingTaskId = null;
+      self.activeModal = self.selectedProfileId ? "child_chores" : null;
+      self.updateDom(150);
+    });
+    headerLeft.appendChild(backBtn);
+
+    const title = document.createElement("h3");
+    title.className = "ct-modal-title";
+    title.innerText = "⭐ Who completed this chore?";
+    headerLeft.appendChild(title);
+    header.appendChild(headerLeft);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "ct-btn-close-modal";
+    closeBtn.innerText = "✕ Close";
+    closeBtn.addEventListener("click", function () {
+      self.completingTaskId = null;
+      self.activeModal = self.selectedProfileId ? "child_chores" : null;
+      self.updateDom(150);
+    });
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "ct-modal-body";
+
+    const infoBox = document.createElement("div");
+    infoBox.style.background = "rgba(255, 255, 255, 0.05)";
+    infoBox.style.padding = "12px 14px";
+    infoBox.style.borderRadius = "var(--ct-radius-md)";
+    infoBox.style.border = "1px solid var(--ct-border)";
+    infoBox.innerHTML = `
+      <div style="font-size:16px; font-weight:700; color:#fff;">${task.title}</div>
+      <div style="font-size:13px; color:#10b981; font-weight:700; margin-top:2px;">
+        ${task.category === "routine" ? "Routine Expectation" : self.config.currencySymbol + (parseFloat(task.reward_amount) || 0).toFixed(2) + " Bounty"}
+      </div>
+    `;
+    body.appendChild(infoBox);
+
+    const promptText = document.createElement("p");
+    promptText.style.margin = "0";
+    promptText.style.fontSize = "14px";
+    promptText.style.color = "#cbd5e1";
+    promptText.innerText = "Select which child completed this chore:";
+    body.appendChild(promptText);
+
+    const kidsGrid = document.createElement("div");
+    kidsGrid.className = "ct-who-grid";
+
+    const avatarGradients = [
+      "linear-gradient(135deg, #3b82f6, #1d4ed8)",
+      "linear-gradient(135deg, #a855f7, #7e22ce)",
+      "linear-gradient(135deg, #f59e0b, #d97706)",
+      "linear-gradient(135deg, #ec4899, #be185d)"
+    ];
+
+    this.profiles.forEach((profile, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "ct-who-btn";
+
+      const avatar = document.createElement("div");
+      avatar.className = "ct-who-avatar";
+      avatar.style.background = avatarGradients[idx % avatarGradients.length];
+      avatar.innerText = (profile.name || "C").charAt(0).toUpperCase();
+      btn.appendChild(avatar);
+
+      const name = document.createElement("span");
+      name.className = "ct-who-name";
+      name.innerText = profile.name;
+      btn.appendChild(name);
+
+      btn.addEventListener("click", function () {
+        self.sendSocketNotification("TOGGLE_TASK_COMPLETION", {
+          taskId: task.id,
+          profileId: profile.id
+        });
+        self.completingTaskId = null;
+        self.activeModal = self.selectedProfileId ? "child_chores" : null;
+        self.updateDom(200);
+      });
+
+      kidsGrid.appendChild(btn);
+    });
+
+    body.appendChild(kidsGrid);
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "ct-btn-secondary";
+    cancelBtn.innerText = "Cancel";
+    cancelBtn.addEventListener("click", function () {
+      self.completingTaskId = null;
+      self.activeModal = self.selectedProfileId ? "child_chores" : null;
+      self.updateDom(150);
+    });
+    body.appendChild(cancelBtn);
+
+    modal.appendChild(body);
+    backdrop.appendChild(modal);
+
+    backdrop.addEventListener("click", function (e) {
+      if (e.target === backdrop) {
+        self.completingTaskId = null;
+        self.activeModal = self.selectedProfileId ? "child_chores" : null;
+        self.updateDom(150);
+      }
+    });
+
+    return backdrop;
+  },
+
+  /**
    * Builds the 4-digit PIN touch pad modal
    */
   buildPinModal: function () {
@@ -898,7 +1107,6 @@ Module.register("MMM-ChoreTracker", {
 
     const modal = document.createElement("div");
     modal.className = "ct-modal-window";
-    modal.style.maxWidth = "400px";
 
     // Header
     const header = document.createElement("div");
@@ -911,12 +1119,9 @@ Module.register("MMM-ChoreTracker", {
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "ct-btn-close-modal";
-    closeBtn.innerText = "✕";
+    closeBtn.innerText = "✕ Cancel";
     closeBtn.addEventListener("click", function () {
-      self.activeModal = null;
-      self.pinInput = "";
-      self.pinError = "";
-      self.updateDom(150);
+      self.closeModal();
     });
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -1010,7 +1215,6 @@ Module.register("MMM-ChoreTracker", {
 
     const modal = document.createElement("div");
     modal.className = "ct-modal-window";
-    modal.style.maxWidth = "760px";
 
     // Header
     const header = document.createElement("div");
@@ -1023,13 +1227,11 @@ Module.register("MMM-ChoreTracker", {
 
     // Lock button
     const lockBtn = document.createElement("button");
-    lockBtn.className = "ct-btn-secondary";
-    lockBtn.style.padding = "6px 14px";
+    lockBtn.className = "ct-btn-close-modal";
     lockBtn.innerText = "🔒 Lock & Exit";
     lockBtn.addEventListener("click", function () {
       self.isParentUnlocked = false;
-      self.activeModal = null;
-      self.updateDom(150);
+      self.closeModal();
     });
     header.appendChild(lockBtn);
     modal.appendChild(header);

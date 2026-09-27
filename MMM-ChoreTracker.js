@@ -147,9 +147,27 @@ Module.register("MMM-ChoreTracker", {
   /**
    * Generates the pure vanilla DOM tree for MagicMirror²
    */
+  closeModal: function () {
+    const existing = document.getElementById("ct-body-modal-overlay");
+    if (existing) existing.remove();
+    this.activeModal = null;
+    this.selectedProfileId = null;
+    this.activeTaskId = null;
+    this.completingTaskId = null;
+    this.pinInput = "";
+    this.pinError = "";
+    this.updateDom(150);
+  },
+
   getDom: function () {
     const wrapper = document.createElement("div");
     wrapper.className = "mmm-choretracker";
+
+    // Clean up any stale body modal overlay
+    const existing = document.getElementById("ct-body-modal-overlay");
+    if (existing) {
+      existing.remove();
+    }
 
     // Header bar
     wrapper.appendChild(this.buildHeader());
@@ -157,17 +175,27 @@ Module.register("MMM-ChoreTracker", {
     // Main screen: Kids Dashboard (only displays names and summary cards of kids)
     wrapper.appendChild(this.buildKidsDashboard());
 
-    // Overlay Modals
+    // Overlay Modals - full screen viewport takeover mounted directly to document.body
+    let modalEl = null;
     if (this.activeModal === "who_completed" && this.completingTaskId) {
-      wrapper.appendChild(this.buildWhoCompletedModal(this.completingTaskId));
+      modalEl = this.buildWhoCompletedModal(this.completingTaskId);
     } else if (this.activeModal === "child_chores" && this.selectedProfileId) {
-      wrapper.appendChild(this.buildChildChoresModal(this.selectedProfileId));
+      modalEl = this.buildChildChoresModal(this.selectedProfileId);
     } else if (this.activeModal === "task_detail" && this.activeTaskId) {
-      wrapper.appendChild(this.buildTaskModal(this.activeTaskId));
+      modalEl = this.buildTaskModal(this.activeTaskId);
     } else if (this.activeModal === "pin_pad") {
-      wrapper.appendChild(this.buildPinModal());
+      modalEl = this.buildPinModal();
     } else if (this.activeModal === "parent_panel") {
-      wrapper.appendChild(this.buildParentPanel());
+      modalEl = this.buildParentPanel();
+    }
+
+    if (modalEl) {
+      modalEl.id = "ct-body-modal-overlay";
+      if (typeof document !== "undefined" && document.body) {
+        document.body.appendChild(modalEl);
+      } else {
+        wrapper.appendChild(modalEl);
+      }
     }
 
     return wrapper;
@@ -414,36 +442,48 @@ Module.register("MMM-ChoreTracker", {
 
     const modal = document.createElement("div");
     modal.className = "ct-modal-window";
-    modal.style.maxWidth = "700px";
 
     // Header
     const header = document.createElement("div");
     header.className = "ct-modal-header";
+
+    const headerLeft = document.createElement("div");
+    headerLeft.style.display = "flex";
+    headerLeft.style.alignItems = "center";
+    headerLeft.style.gap = "14px";
+
+    const backBtn = document.createElement("button");
+    backBtn.className = "ct-btn-close-modal";
+    backBtn.innerHTML = `← Back`;
+    backBtn.setAttribute("aria-label", "Back to dashboard");
+    backBtn.addEventListener("click", function () {
+      self.closeModal();
+    });
+    headerLeft.appendChild(backBtn);
 
     const titleGroup = document.createElement("div");
     titleGroup.className = "ct-modal-title";
 
     const initial = isUpForGrabsView ? "⚡" : (childName || "C").charAt(0).toUpperCase();
     titleGroup.innerHTML = `
-      <div class="ct-avatar-circle" style="background:${isUpForGrabsView ? "#8b5cf6" : "#3b82f6"}; width:36px; height:36px; font-size:16px;">
+      <div class="ct-avatar-circle" style="background:${isUpForGrabsView ? "#8b5cf6" : "#3b82f6"}; width:38px; height:38px; font-size:16px;">
         ${initial}
       </div>
       <div>
-        <div style="font-size:19px; line-height:1.2;">${childName}'s Chores</div>
-        <div style="font-size:12px; font-weight:500; color:#94a3b8;">Tap to complete or view notes</div>
+        <div style="font-size:19px; line-height:1.2; font-weight:700;">${childName}'s Chores</div>
+        <div style="font-size:12px; font-weight:500; color:#94a3b8;">${isUpForGrabsView ? "Open bounties for anyone in the family" : "Tap checkmark to complete • Tap chore for notes"}</div>
       </div>
     `;
-    header.appendChild(titleGroup);
+    headerLeft.appendChild(titleGroup);
+    header.appendChild(headerLeft);
 
     // Close button (returns to the main kids dashboard)
     const closeBtn = document.createElement("button");
     closeBtn.className = "ct-btn-close-modal";
-    closeBtn.innerText = "✕";
+    closeBtn.innerText = "✕ Close";
     closeBtn.setAttribute("aria-label", "Close");
     closeBtn.addEventListener("click", function () {
-      self.activeModal = null;
-      self.selectedProfileId = null;
-      self.updateDom(150);
+      self.closeModal();
     });
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -661,24 +701,38 @@ Module.register("MMM-ChoreTracker", {
     const header = document.createElement("div");
     header.className = "ct-modal-header";
 
-    const title = document.createElement("h3");
-    title.className = "ct-modal-title";
-    title.innerText = task.title;
-    header.appendChild(title);
+    const headerLeft = document.createElement("div");
+    headerLeft.style.display = "flex";
+    headerLeft.style.alignItems = "center";
+    headerLeft.style.gap = "14px";
 
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "ct-btn-close-modal";
-    closeBtn.innerText = "✕";
-    closeBtn.addEventListener("click", function () {
-      // Return to child modal if a child was selected, otherwise close
+    const backBtn = document.createElement("button");
+    backBtn.className = "ct-btn-close-modal";
+    backBtn.innerHTML = `← Back to Chores`;
+    backBtn.setAttribute("aria-label", "Back to Chores");
+    backBtn.addEventListener("click", function () {
       if (self.selectedProfileId) {
         self.activeModal = "child_chores";
         self.activeTaskId = null;
+        self.updateDom(150);
       } else {
-        self.activeModal = null;
-        self.activeTaskId = null;
+        self.closeModal();
       }
-      self.updateDom(150);
+    });
+    headerLeft.appendChild(backBtn);
+
+    const title = document.createElement("h3");
+    title.className = "ct-modal-title";
+    title.innerText = task.title;
+    headerLeft.appendChild(title);
+    header.appendChild(headerLeft);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "ct-btn-close-modal";
+    closeBtn.innerText = "✕ Close";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.addEventListener("click", function () {
+      self.closeModal();
     });
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -919,19 +973,35 @@ Module.register("MMM-ChoreTracker", {
 
     const modal = document.createElement("div");
     modal.className = "ct-modal-window";
-    modal.style.maxWidth = "460px";
 
     const header = document.createElement("div");
     header.className = "ct-modal-header";
 
+    const headerLeft = document.createElement("div");
+    headerLeft.style.display = "flex";
+    headerLeft.style.alignItems = "center";
+    headerLeft.style.gap = "14px";
+
+    const backBtn = document.createElement("button");
+    backBtn.className = "ct-btn-close-modal";
+    backBtn.innerHTML = `← Back`;
+    backBtn.setAttribute("aria-label", "Back");
+    backBtn.addEventListener("click", function () {
+      self.completingTaskId = null;
+      self.activeModal = self.selectedProfileId ? "child_chores" : null;
+      self.updateDom(150);
+    });
+    headerLeft.appendChild(backBtn);
+
     const title = document.createElement("h3");
     title.className = "ct-modal-title";
     title.innerText = "⭐ Who completed this chore?";
-    header.appendChild(title);
+    headerLeft.appendChild(title);
+    header.appendChild(headerLeft);
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "ct-btn-close-modal";
-    closeBtn.innerText = "✕";
+    closeBtn.innerText = "✕ Close";
     closeBtn.addEventListener("click", function () {
       self.completingTaskId = null;
       self.activeModal = self.selectedProfileId ? "child_chores" : null;
@@ -1037,7 +1107,6 @@ Module.register("MMM-ChoreTracker", {
 
     const modal = document.createElement("div");
     modal.className = "ct-modal-window";
-    modal.style.maxWidth = "400px";
 
     // Header
     const header = document.createElement("div");
@@ -1050,12 +1119,9 @@ Module.register("MMM-ChoreTracker", {
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "ct-btn-close-modal";
-    closeBtn.innerText = "✕";
+    closeBtn.innerText = "✕ Cancel";
     closeBtn.addEventListener("click", function () {
-      self.activeModal = null;
-      self.pinInput = "";
-      self.pinError = "";
-      self.updateDom(150);
+      self.closeModal();
     });
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -1149,7 +1215,6 @@ Module.register("MMM-ChoreTracker", {
 
     const modal = document.createElement("div");
     modal.className = "ct-modal-window";
-    modal.style.maxWidth = "760px";
 
     // Header
     const header = document.createElement("div");
@@ -1162,13 +1227,11 @@ Module.register("MMM-ChoreTracker", {
 
     // Lock button
     const lockBtn = document.createElement("button");
-    lockBtn.className = "ct-btn-secondary";
-    lockBtn.style.padding = "6px 14px";
+    lockBtn.className = "ct-btn-close-modal";
     lockBtn.innerText = "🔒 Lock & Exit";
     lockBtn.addEventListener("click", function () {
       self.isParentUnlocked = false;
-      self.activeModal = null;
-      self.updateDom(150);
+      self.closeModal();
     });
     header.appendChild(lockBtn);
     modal.appendChild(header);
