@@ -1,0 +1,159 @@
+{
+  "profiles": [
+    {
+      "id": "child_01",
+      "name": "Alex",
+      "pin": null,
+      "icon": "assets/icons/alex.png"
+    },
+    {
+      "id": "child_02",
+      "name": "Maya",
+      "pin": null,
+      "icon": "assets/icons/maya.png"
+    },
+    {
+      "id": "child_03",
+      "name": "Leo",
+      "pin": null,
+      "icon": "assets/icons/leo.png"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_101",
+      "title": "Brush Teeth",
+      "category": "routine",
+      "reward_amount": 0.00,
+      "assigned_to": "child_01",
+      "recurrence": {
+        "frequency": "weekly",
+        "days_of_week": [0, 1, 2, 3, 4, 5, 6]
+      },
+      "last_completed_date": "2026-09-24",
+      "is_completed_today": false,
+      "notes": []
+    },
+    {
+      "id": "task_102",
+      "title": "Make Bed & Tidy Room",
+      "category": "routine",
+      "reward_amount": 0.00,
+      "assigned_to": "child_01",
+      "recurrence": {
+        "frequency": "weekly",
+        "days_of_week": [1, 2, 3, 4, 5]
+      },
+      "last_completed_date": "2026-09-25",
+      "is_completed_today": false,
+      "notes": []
+    },
+    {
+      "id": "task_103",
+      "title": "Feed the Family Cat",
+      "category": "routine",
+      "reward_amount": 0.00,
+      "assigned_to": "child_02",
+      "recurrence": {
+        "frequency": "weekly",
+        "days_of_week": [0, 1, 2, 3, 4, 5, 6]
+      },
+      "last_completed_date": "2026-09-26",
+      "is_completed_today": true,
+      "notes": [
+        {
+          "author": "Maya",
+          "text": "Filled fresh water bowl too!",
+          "timestamp": "2026-09-26T08:15:00Z"
+        }
+      ]
+    },
+    {
+      "id": "task_104",
+      "title": "Pack Backpack & School Clothes",
+      "category": "routine",
+      "reward_amount": 0.00,
+      "assigned_to": "child_03",
+      "recurrence": {
+        "frequency": "weekly",
+        "days_of_week": [0, 1, 2, 3, 4]
+      },
+      "last_completed_date": "2026-09-25",
+      "is_completed_today": false,
+      "notes": []
+    },
+    {
+      "id": "task_201",
+      "title": "Rake Leaves in Backyard",
+      "category": "monetized",
+      "reward_amount": 5.00,
+      "assigned_to": "up_for_grabs",
+      "recurrence": null,
+      "is_completed": false,
+      "is_approved": false,
+      "notes": [
+        {
+          "author": "Parent",
+          "text": "Please make sure to bag the leaves near the garage.",
+          "timestamp": "2026-09-25T14:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "task_202",
+      "title": "Wash and Vacuum Family Car",
+      "category": "monetized",
+      "reward_amount": 10.00,
+      "assigned_to": "up_for_grabs",
+      "recurrence": null,
+      "is_completed": false,
+      "is_approved": false,
+      "notes": [
+        {
+          "author": "Parent",
+          "text": "Sponges and car soap are in the blue garage bin.",
+          "timestamp": "2026-09-24T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "task_203",
+      "title": "Vacuum Living Room & Hallway",
+      "category": "monetized",
+      "reward_amount": 4.50,
+      "assigned_to": "child_01",
+      "recurrence": null,
+      "is_completed": true,
+      "is_approved": false,
+      "notes": [
+        {
+          "author": "Alex",
+          "text": "Finished dusting baseboards and ran the vacuum thoroughly.",
+          "timestamp": "2026-09-26T11:30:00Z"
+        }
+      ]
+    },
+    {
+      "id": "task_204",
+      "title": "Sort Recycling and Breakdown Cardboard",
+      "category": "monetized",
+      "reward_amount": 3.00,
+      "assigned_to": "child_02",
+      "recurrence": null,
+      "is_completed": true,
+      "is_approved": true,
+      "notes": [
+        {
+          "author": "Maya",
+          "text": "All flat boxes tied with twine.",
+          "timestamp": "2026-09-25T16:00:00Z"
+        },
+        {
+          "author": "Parent",
+          "text": "Super neat job Maya! Approved for your weekly payout.",
+          "timestamp": "2026-09-25T17:30:00Z"
+        }
+      ]
+    }
+  ]
+}
