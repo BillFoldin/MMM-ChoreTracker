@@ -1688,7 +1688,7 @@ module.exports = NodeHelper.create({ ... });`}
 .ct-kid-avatar { ... }
 ...`}
 
-                {selectedFile === "package.json" && `{\n  "name": "MMM-ChoreTracker",\n  "version": "1.0.0",\n  "dependencies": {\n    "lowdb": "^1.0.0",\n    "uuid": "^9.0.0",\n    "write-file-atomic": "^5.0.0"\n  }\n}`}
+                {selectedFile === "package.json" && `{\n  "name": "MMM-ChoreTracker",\n  "version": "1.0.0",\n  "dependencies": {\n    "lowdb": "^1.0.0",\n    "uuid": "^11.1.1",\n    "write-file-atomic": "^5.0.0"\n  }\n}`}
                 {selectedFile === "chores_db.json" && JSON.stringify({ profiles, tasks }, null, 2)}
                 {selectedFile === "payouts_db.json" && JSON.stringify({ payout_records: payouts }, null, 2)}
               </pre>
