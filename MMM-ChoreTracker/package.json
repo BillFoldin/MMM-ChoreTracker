@@ -1,6 +1,7 @@
 {
   "name": "MMM-ChoreTracker",
   "version": "1.0.0",
+  "type": "commonjs",
   "description": "MagicMirror² module for family chore tracking, allowance payout audits, and routine recurrence.",
   "main": "MMM-ChoreTracker.js",
   "scripts": {
