@@ -90,7 +90,9 @@ modules/MMM-ChoreTracker/
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `title` | `String` | `"Family Chore Tracker"` | Header title displayed on the mirror. |
+| `showTitleArea` | `Boolean` | `false` | When `false` (default), hides bulky title, icon, and subtitles, maximizing screen space for calendars. |
+| `showParentButton` | `Boolean` | `true` | When `true`, displays the discreet Parent Mode button in the compact top bar. |
+| `title` | `String` | `"Family Chore Tracker"` | Header title (used if `showTitleArea: true`). |
 | `currencySymbol` | `String` | `"$"` | Currency prefix (`$`, `€`, `£`, etc.). |
 | `parentPin` | `String` | `"1234"` | 4-digit PIN for parent administrative panel access. |
 | `pollInterval` | `Number` | `60000` | Safety background refresh interval in ms (1 minute). |

@@ -23,6 +23,8 @@ Module.register("MMM-ChoreTracker", {
   // Module configuration defaults
   defaults: {
     title: "Family Chore Tracker",
+    showTitleArea: false, // Default: ultra-compact layout for coexisting with large calendars
+    showParentButton: true, // Display discrete Parent Mode lock button
     currencySymbol: "$",
     parentPin: "1234",
     pollInterval: 60000, // 60s fallback poll
@@ -78,11 +80,33 @@ Module.register("MMM-ChoreTracker", {
     this.sendSocketNotification("CONFIG", this.config);
     this.sendSocketNotification("GET_INITIAL_DATA");
 
-    // Periodic safety sync interval
+    // Fast-retry polling on boot in case the socket connection took a moment to handshake
     const self = this;
+    [500, 1500, 3000, 6000, 10000].forEach((delay) => {
+      setTimeout(() => {
+        if (!self.profiles || self.profiles.length === 0) {
+          Log.info(`[${self.name}] Retrying initial data fetch (${delay}ms)...`);
+          self.sendSocketNotification("CONFIG", self.config);
+          self.sendSocketNotification("GET_INITIAL_DATA");
+        }
+      }, delay);
+    });
+
+    // Periodic safety sync interval
     setInterval(function () {
       self.sendSocketNotification("GET_INITIAL_DATA");
     }, this.config.pollInterval);
+  },
+
+  /**
+   * MagicMirror global notification handler:
+   * Re-requests data once all modules have finished booting and sockets are hot
+   */
+  notificationReceived: function (notification, payload, sender) {
+    if (notification === "ALL_MODULES_STARTED" || notification === "DOM_OBJECTS_CREATED") {
+      this.sendSocketNotification("CONFIG", this.config);
+      this.sendSocketNotification("GET_INITIAL_DATA");
+    }
   },
 
   /**
@@ -211,9 +235,44 @@ Module.register("MMM-ChoreTracker", {
   },
 
   /**
-   * Builds top header with title, family counters, and Parent Mode button
+   * Builds top header:
+   * By default (compact mode), omits the bulky title, subtitle, icon, and summary pills,
+   * rendering ONLY the discrete Parent Mode button to conserve vertical screen space.
    */
   buildHeader: function () {
+    const self = this;
+
+    // Compact Mode (Default): Only render the Parent Mode button
+    if (!this.config.showTitleArea) {
+      if (!this.config.showParentButton) {
+        return document.createDocumentFragment();
+      }
+
+      const compactBar = document.createElement("div");
+      compactBar.className = "ct-compact-bar";
+
+      const parentBtn = document.createElement("button");
+      parentBtn.className = `ct-btn-parent compact ${this.isParentUnlocked ? "unlocked" : ""}`;
+      parentBtn.innerHTML = this.isParentUnlocked
+        ? `<span>🔓</span> Parent Mode`
+        : `<span>🔒</span> Parent Mode`;
+
+      parentBtn.addEventListener("click", function () {
+        if (self.isParentUnlocked) {
+          self.activeModal = "parent_panel";
+        } else {
+          self.pinInput = "";
+          self.pinError = "";
+          self.activeModal = "pin_pad";
+        }
+        self.updateDom(200);
+      });
+
+      compactBar.appendChild(parentBtn);
+      return compactBar;
+    }
+
+    // Full Title Area (Only if explicitly enabled via config: { showTitleArea: true })
     const header = document.createElement("div");
     header.className = "ct-header";
 
@@ -281,7 +340,6 @@ Module.register("MMM-ChoreTracker", {
       ? `<span>🔓</span> Parent Mode`
       : `<span>🔒</span> Parent Lock`;
 
-    const self = this;
     parentBtn.addEventListener("click", function () {
       if (self.isParentUnlocked) {
         self.activeModal = "parent_panel";
@@ -315,8 +373,33 @@ Module.register("MMM-ChoreTracker", {
       "linear-gradient(135deg, #3b82f6, #1d4ed8)", // Blue
       "linear-gradient(135deg, #a855f7, #7e22ce)", // Purple
       "linear-gradient(135deg, #f59e0b, #d97706)", // Amber
-      "linear-gradient(135deg, #ec4899, #be185d)"  // Pink
+      "linear-gradient(135deg, #ec4899, #be185d)" // Pink
     ];
+
+    if (!this.profiles || this.profiles.length === 0) {
+      const emptyCard = document.createElement("div");
+      emptyCard.className = "ct-kid-card";
+      emptyCard.style.gridColumn = "1 / -1";
+      emptyCard.style.textAlign = "center";
+      emptyCard.style.padding = "24px 16px";
+      emptyCard.innerHTML = `
+        <div style="font-size: 28px; margin-bottom: 8px;">⏳</div>
+        <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px;">Loading Chore Profiles...</h3>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 12px;">Syncing with node_helper and data/chores_db.json</p>
+        <button type="button" class="ct-empty-retry-btn" style="padding: 8px 18px; border-radius: 8px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-size: 12px; font-weight: 600; cursor: pointer;">
+          ↻ Tap to Retry Sync
+        </button>
+      `;
+      const retryBtn = emptyCard.querySelector(".ct-empty-retry-btn");
+      if (retryBtn) {
+        retryBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          self.sendSocketNotification("CONFIG", self.config);
+          self.sendSocketNotification("GET_INITIAL_DATA");
+        });
+      }
+      grid.appendChild(emptyCard);
+    }
 
     this.profiles.forEach((profile, index) => {
       const childTasks = self.tasks.filter((t) => t.assigned_to === profile.id);
@@ -329,31 +412,24 @@ Module.register("MMM-ChoreTracker", {
       const card = document.createElement("div");
       card.className = "ct-kid-card";
 
-      // Avatar circle with first letter of name
-      const initial = (profile.name || "C").charAt(0).toUpperCase();
+      // Avatar circle with integrated child name
       const gradient = avatarGradients[index % avatarGradients.length];
 
       const avatar = document.createElement("div");
       avatar.className = "ct-kid-avatar";
       avatar.style.background = gradient;
-      avatar.innerText = initial;
+      avatar.innerText = profile.name;
       card.appendChild(avatar);
-
-      // Child name
-      const name = document.createElement("h3");
-      name.className = "ct-kid-name";
-      name.innerText = profile.name;
-      card.appendChild(name);
 
       // Status text
       const status = document.createElement("div");
       status.className = "ct-kid-status";
       if (totalCount === 0) {
-        status.innerText = "No chores assigned";
+        status.innerText = "No chores";
       } else if (pendingCount === 0) {
         status.innerHTML = `<span style="color:#10b981;">🎉 All ${totalCount} Done!</span>`;
       } else {
-        status.innerHTML = `<span style="color:#38bdf8;">${doneCount} of ${totalCount} Done</span> • <strong style="color:#f59e0b;">${pendingCount} Due</strong>`;
+        status.innerHTML = `<span style="color:#38bdf8;">${doneCount}/${totalCount} Done</span> • <strong style="color:#f59e0b;">${pendingCount} Due</strong>`;
       }
       card.appendChild(status);
 
@@ -367,11 +443,7 @@ Module.register("MMM-ChoreTracker", {
       bar.appendChild(fill);
       card.appendChild(bar);
 
-      // Tap hint
-      const hint = document.createElement("div");
-      hint.className = "ct-kid-tap-hint";
-      hint.innerHTML = `<span>View chores</span> <span>→</span>`;
-      card.appendChild(hint);
+      // (View chores link removed to save vertical space)
 
       // Clicking opens this child's chores modal
       card.addEventListener("click", function () {
@@ -396,17 +468,12 @@ Module.register("MMM-ChoreTracker", {
     const grabsAvatar = document.createElement("div");
     grabsAvatar.className = "ct-kid-avatar";
     grabsAvatar.style.background = "linear-gradient(135deg, #8b5cf6, #6d28d9)";
-    grabsAvatar.innerText = "⚡";
+    grabsAvatar.innerText = "⚡ Bounties";
     grabsCard.appendChild(grabsAvatar);
-
-    const grabsName = document.createElement("h3");
-    grabsName.className = "ct-kid-name";
-    grabsName.innerText = "Up For Grabs";
-    grabsCard.appendChild(grabsName);
 
     const grabsStatus = document.createElement("div");
     grabsStatus.className = "ct-kid-status";
-    grabsStatus.innerHTML = `<span style="color:#d8b4fe;">${openGrabs.length} Open Bounties</span> • <strong style="color:#10b981;">${self.config.currencySymbol}${grabsTotal.toFixed(2)}</strong>`;
+    grabsStatus.innerHTML = `<span style="color:#d8b4fe;">${openGrabs.length} Open</span> • <strong style="color:#10b981;">${self.config.currencySymbol}${grabsTotal.toFixed(2)}</strong>`;
     grabsCard.appendChild(grabsStatus);
 
     const grabsBar = document.createElement("div");
@@ -418,10 +485,7 @@ Module.register("MMM-ChoreTracker", {
     grabsBar.appendChild(grabsFill);
     grabsCard.appendChild(grabsBar);
 
-    const grabsHint = document.createElement("div");
-    grabsHint.className = "ct-kid-tap-hint";
-    grabsHint.innerHTML = `<span>Claim bounties</span> <span>→</span>`;
-    grabsCard.appendChild(grabsHint);
+    // (View chores link removed to save vertical space)
 
     grabsCard.addEventListener("click", function () {
       self.selectedProfileId = "up_for_grabs";

@@ -375,6 +375,10 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // Layout configuration: Compact mode (no title area) vs Classic mode
+  const [showTitleArea, setShowTitleArea] = useState(false);
+  const [showCalendarSim, setShowCalendarSim] = useState(true);
+
   // Summary counts
   const completedCount = tasks.filter((t) =>
     t.category === "routine" ? t.is_completed_today : t.is_completed
@@ -748,69 +752,109 @@ export default function App() {
             <div className="w-full max-w-4xl mb-4 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2 text-slate-300">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Touchscreen Smart Mirror View: <strong>Click any child's name to open their chores modal!</strong></span>
+                <span>Touchscreen Smart Mirror View: <strong>Click any child to open their chores!</strong></span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
+                  onClick={() => setShowTitleArea(!showTitleArea)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-medium border text-xs cursor-pointer ${
+                    !showTitleArea
+                      ? "bg-sky-500/20 text-sky-300 border-sky-500/50"
+                      : "bg-slate-800 text-slate-300 border-slate-700 hover:text-white"
+                  }`}
+                  title="Toggle Title Area on/off"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  Title Area: {!showTitleArea ? "Hidden (Compact Mode)" : "Shown (Full Header)"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCalendarSim(!showCalendarSim)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-medium border text-xs cursor-pointer ${
+                    showCalendarSim
+                      ? "bg-purple-500/20 text-purple-300 border-purple-500/50"
+                      : "bg-slate-800 text-slate-300 border-slate-700 hover:text-white"
+                  }`}
+                  title="Toggle Simulated Calendar on/off"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                  Calendar Space: {showCalendarSim ? "Visible" : "Hidden"}
+                </button>
+                <button
+                  type="button"
                   onClick={handleSimulateMidnight}
-                  className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg transition font-medium border border-slate-700"
+                  className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg transition font-medium border border-slate-700 cursor-pointer"
                   title="Triggers the midnight routine recurrence engine"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-sky-400" />
-                  Test Midnight Recurrence
+                  Test Midnight
                 </button>
               </div>
             </div>
 
             {/* Smart Mirror Frame */}
-            <div className="w-full max-w-4xl bg-black rounded-3xl border-8 border-slate-800 shadow-2xl relative overflow-hidden flex flex-col min-h-[620px]">
+            <div className="w-full max-w-4xl bg-black rounded-3xl border-8 border-slate-800 shadow-2xl relative overflow-hidden flex flex-col min-h-[580px]">
               {/* Subtle glass reflection overlay */}
               <div className="absolute inset-0 pointer-events-none bg-gradient-to-tr from-white/[0.02] via-transparent to-white/[0.04]"></div>
 
               {/* Standard MagicMirror Top Bar (Clock & Weather) */}
-              <div className="p-6 border-b border-white/5 flex justify-between items-start text-white select-none">
+              <div className="p-5 border-b border-white/5 flex justify-between items-start text-white select-none">
                 <div>
-                  <div className="text-4xl font-extralight tracking-tight font-mono">
+                  <div className="text-3xl sm:text-4xl font-extralight tracking-tight font-mono">
                     {currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </div>
-                  <div className="text-sm text-slate-400 font-medium">
+                  <div className="text-xs sm:text-sm text-slate-400 font-medium">
                     {currentTime.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-light">68°F ☀️</div>
-                  <div className="text-xs text-slate-400">Clear Skies • Living Room Mirror</div>
+                  <div className="text-xl sm:text-2xl font-light">68°F ☀️</div>
+                  <div className="text-[11px] text-slate-400">Clear Skies • Living Room Mirror</div>
                 </div>
               </div>
 
-              {/* MMM-ChoreTracker Module Container (mounted in mirror) */}
-              <div className="flex-1 p-6 relative flex flex-col justify-between">
-                <div>
-                  {/* Module Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10 mb-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xl shadow-lg shadow-sky-500/20">
-                        ✨
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold tracking-tight text-white">Family Chore Tracker</h2>
-                        <p className="text-xs text-slate-400">Select a kid below to view or check off chores</p>
-                      </div>
+              {/* Simulated Smart Mirror Large Calendar Widget */}
+              {showCalendarSim && (
+                <div className="mx-5 mt-3 p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 select-none">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                      <span className="text-[11px] font-bold text-slate-200 tracking-wider uppercase">
+                        Family Schedule (Calendar Module)
+                      </span>
                     </div>
+                    <span className="text-[10px] text-slate-400">September 2026 • 4 Events Today</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="p-2 rounded-lg bg-sky-950/40 border border-sky-500/20">
+                      <div className="text-[9px] text-sky-400 font-semibold">08:30 AM</div>
+                      <div className="font-medium text-white truncate text-[11px]">School Drop-off</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/20">
+                      <div className="text-[9px] text-emerald-400 font-semibold">03:45 PM</div>
+                      <div className="font-medium text-white truncate text-[11px]">Soccer Practice (Alex & Maya)</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-purple-950/40 border border-purple-500/20">
+                      <div className="text-[9px] text-purple-400 font-semibold">05:15 PM</div>
+                      <div className="font-medium text-white truncate text-[11px]">Piano Lesson (Maya)</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/20">
+                      <div className="text-[9px] text-amber-400 font-semibold">06:30 PM</div>
+                      <div className="font-medium text-white truncate text-[11px]">Family Dinner & Games</div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 bg-sky-500/10 border border-sky-500/30 text-sky-400 px-3 py-1.5 rounded-full text-xs font-semibold">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          {completedCount}/{tasks.length} Done
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-full text-xs font-semibold">
-                          <DollarSign className="w-3.5 h-3.5" />
-                          ${openBountySum.toFixed(2)} Open
-                        </div>
-                      </div>
-
+              {/* MMM-ChoreTracker Module Container (mounted in mirror) */}
+              <div className="flex-1 p-5 relative flex flex-col justify-between">
+                <div>
+                  {/* Module Header: Compact Mode (No Title Area) vs Classic Mode */}
+                  {!showTitleArea ? (
+                    <div className="flex items-center justify-end mb-2">
                       <button
+                        type="button"
                         onClick={() => {
                           if (isParentUnlocked) {
                             setActiveModal("parent_panel");
@@ -818,20 +862,61 @@ export default function App() {
                             setActiveModal("pin_pad");
                           }
                         }}
-                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition border ${
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition border cursor-pointer ${
                           isParentUnlocked
                             ? "bg-purple-500/20 border-purple-500 text-purple-300"
-                            : "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                            : "bg-white/10 border-white/20 text-slate-300 hover:text-white hover:bg-white/20"
                         }`}
                       >
                         {isParentUnlocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                        {isParentUnlocked ? "Parent Mode" : "Parent Lock"}
+                        {isParentUnlocked ? "Parent Mode" : "Parent Mode"}
                       </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/10 mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-lg shadow-md shadow-sky-500/20">
+                          ✨
+                        </div>
+                        <div>
+                          <h2 className="text-base font-bold tracking-tight text-white">Family Chore Tracker</h2>
+                          <p className="text-[11px] text-slate-400">Select a kid below to view or check off chores</p>
+                        </div>
+                      </div>
 
-                  {/* MAIN SCREEN: KIDS CARDS (ONLY KIDS' NAMES SHOWN - SLEEK & COMPACT) */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 max-w-3xl mx-auto w-full">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 bg-sky-500/10 border border-sky-500/30 text-sky-400 px-2.5 py-1 rounded-full text-xs font-semibold">
+                          <CheckCircle2 className="w-3 h-3" />
+                          {completedCount}/{tasks.length} Done
+                        </div>
+                        <div className="flex items-center gap-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-semibold">
+                          <DollarSign className="w-3 h-3" />
+                          ${openBountySum.toFixed(2)} Open
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isParentUnlocked) {
+                              setActiveModal("parent_panel");
+                            } else {
+                              setActiveModal("pin_pad");
+                            }
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+                            isParentUnlocked
+                              ? "bg-purple-500/20 border-purple-500 text-purple-300"
+                              : "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                          }`}
+                        >
+                          {isParentUnlocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                          {isParentUnlocked ? "Parent Mode" : "Parent Lock"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MAIN SCREEN: KIDS CARDS (NAMES INTEGRATED INTO AVATAR - ULTRA COMPACT) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-w-3xl mx-auto w-full">
                     {profiles.map((p, idx) => {
                       const childTasks = tasks.filter((t) => t.assigned_to === p.id);
                       const total = childTasks.length;
@@ -850,19 +935,16 @@ export default function App() {
                             setChildModalTab("assigned");
                             setActiveModal("child_chores");
                           }}
-                          className="group cursor-pointer rounded-xl p-3.5 sm:p-4 border border-white/10 bg-slate-900/90 hover:bg-slate-800/90 hover:border-sky-400 hover:-translate-y-0.5 transition-all duration-150 flex flex-col items-center text-center shadow-lg select-none"
+                          className="group cursor-pointer rounded-xl p-2 sm:p-2.5 border border-white/10 bg-slate-900/90 hover:bg-slate-800/90 hover:border-sky-400 hover:-translate-y-0.5 transition-all duration-150 flex flex-col items-center text-center shadow-md select-none"
                         >
+                          {/* Avatar Circle with Integrated Child Name */}
                           <div
-                            className={`w-12 h-12 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center text-lg font-black text-white shadow-md mb-2 group-hover:scale-105 transition-transform`}
+                            className={`min-w-11 px-2.5 h-7 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center text-xs font-black text-white shadow-sm mb-1 group-hover:scale-105 transition-transform`}
                           >
-                            {p.name.charAt(0)}
+                            {p.name}
                           </div>
 
-                          <h3 className="text-base font-bold text-white mb-0.5 group-hover:text-sky-300 transition">
-                            {p.name}
-                          </h3>
-
-                          <div className="text-[11px] text-slate-400 font-medium mb-2 leading-tight">
+                          <div className="text-[10px] text-slate-400 font-medium mb-1 leading-tight">
                             {total === 0 ? (
                               <span>No chores</span>
                             ) : pending === 0 ? (
@@ -875,16 +957,12 @@ export default function App() {
                           </div>
 
                           {/* Progress bar */}
-                          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-2.5">
+                          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-sky-400 to-emerald-400 rounded-full transition-all duration-300"
                               style={{ width: `${pct}%` }}
                             />
                           </div>
-
-                          <span className="text-[11px] font-semibold text-sky-400 flex items-center gap-0.5 group-hover:translate-x-0.5 transition">
-                            View chores <ChevronRight className="w-3.5 h-3.5" />
-                          </span>
                         </div>
                       );
                     })}
@@ -903,37 +981,30 @@ export default function App() {
                             setChildModalTab("up_for_grabs");
                             setActiveModal("child_chores");
                           }}
-                          className="group cursor-pointer rounded-xl p-3.5 sm:p-4 border border-purple-500/40 bg-purple-950/20 hover:bg-purple-900/30 hover:border-purple-400 hover:-translate-y-0.5 transition-all duration-150 flex flex-col items-center text-center shadow-lg select-none"
+                          className="group cursor-pointer rounded-xl p-2 sm:p-2.5 border border-purple-500/40 bg-purple-950/20 hover:bg-purple-900/30 hover:border-purple-400 hover:-translate-y-0.5 transition-all duration-150 flex flex-col items-center text-center shadow-md select-none"
                         >
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-lg font-black text-white shadow-md mb-2 group-hover:scale-105 transition-transform">
-                            ⚡
+                          {/* Avatar Circle with Integrated Name */}
+                          <div className="min-w-11 px-2.5 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs font-black text-white shadow-sm mb-1 group-hover:scale-105 transition-transform gap-1">
+                            <span>⚡</span> Bounties
                           </div>
 
-                          <h3 className="text-base font-bold text-white mb-0.5 group-hover:text-purple-300 transition">
-                            Up For Grabs
-                          </h3>
-
-                          <div className="text-[11px] text-purple-200 font-medium mb-2 leading-tight">
-                            {openGrabs.length} Bounties • <strong className="text-emerald-400 font-bold">${grabsSum.toFixed(2)}</strong>
+                          <div className="text-[10px] text-purple-200 font-medium mb-1 leading-tight">
+                            {openGrabs.length} Open • <strong className="text-emerald-400 font-bold">${grabsSum.toFixed(2)}</strong>
                           </div>
 
-                          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-2.5">
+                          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-purple-400 to-emerald-400 rounded-full transition-all"
                               style={{ width: openGrabs.length > 0 ? "100%" : "0%" }}
                             />
                           </div>
-
-                          <span className="text-[11px] font-semibold text-purple-300 flex items-center gap-0.5 group-hover:translate-x-0.5 transition">
-                            Claim bounties <ChevronRight className="w-3.5 h-3.5" />
-                          </span>
                         </div>
                       );
                     })()}
                   </div>
                 </div>
 
-                <div className="pt-6 text-center text-xs text-slate-500">
+                <div className="pt-3 text-center text-[11px] text-slate-500">
                   Touch any profile above to inspect assigned chores, claim rewards, or post notes.
                 </div>
               </div>
@@ -995,11 +1066,13 @@ export default function App() {
                 {selectedFile === "MMM-ChoreTracker.js" && `/**
  * MMM-ChoreTracker - MMM-ChoreTracker.js
  * Frontend module displaying Kids Dashboard on the main screen.
- * Clicking a child opens the full chore modal.
+ * Ultra-compact mode: omits title area, rendering only Parent Mode button.
  */
 Module.register("MMM-ChoreTracker", {
   defaults: {
     title: "Family Chore Tracker",
+    showTitleArea: false, // Default: ultra-compact layout for large calendar displays
+    showParentButton: true, // Only the Parent Mode button is shown in top bar
     currencySymbol: "$",
     parentPin: "1234",
     pollInterval: 60000,
@@ -1007,54 +1080,63 @@ Module.register("MMM-ChoreTracker", {
     databaseDirectory: "data"
   },
 
-  getDom: function () {
-    const wrapper = document.createElement("div");
-    wrapper.className = "mmm-choretracker";
-    wrapper.appendChild(this.buildHeader());
-    wrapper.appendChild(this.buildKidsDashboard()); // Kids Dashboard view
-
-    if (this.activeModal === "child_chores" && this.selectedProfileId) {
-      wrapper.appendChild(this.buildChildChoresModal(this.selectedProfileId));
+  buildHeader: function () {
+    // When showTitleArea is false (default):
+    // Only the sleek Parent Mode button is rendered!
+    if (!this.config.showTitleArea) {
+      const compactBar = document.createElement("div");
+      compactBar.className = "ct-compact-bar";
+      const parentBtn = document.createElement("button");
+      parentBtn.className = "ct-btn-parent compact";
+      parentBtn.innerHTML = "<span>🔒</span> Parent Mode";
+      compactBar.appendChild(parentBtn);
+      return compactBar;
     }
-    return wrapper;
-  },
-
-  buildKidsDashboard: function () {
-    // Generates the prominent touch cards for Alex, Maya, Leo & Up For Grabs
+    // Otherwise renders full header if explicitly enabled in config
     ...
   },
 
-  buildChildChoresModal: function (childId) {
-    // Generates the modal with that specific child's chore list
+  buildKidsDashboard: function () {
+    // Generates sleek touch cards for Alex, Maya, Leo & Up For Grabs
     ...
   }
 });`}
 
                 {selectedFile === "node_helper.js" && `/**
  * MMM-ChoreTracker - node_helper.js
- * Atomic file persistence with lowdb v1 + write-file-atomic fsync adapter.
+ * 100% Pure JavaScript (Zero external npm packages)
+ * Resilient atomic writes with native fs + crypto
  */
 const fs = require("fs");
 const path = require("path");
-const writeFileAtomic = require("write-file-atomic");
-const low = require("lowdb");
-const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 const NodeHelper = require("node_helper");
 
-class AtomicFileSync { ... }
+class LocalJsonDb { ... }
 module.exports = NodeHelper.create({ ... });`}
 
-                {selectedFile === "MMM-ChoreTracker.css" && `/* Kids Dashboard styles with large touch targets */
+                {selectedFile === "MMM-ChoreTracker.css" && `/* Ultra-compact styles optimized for smart mirror screens alongside calendars */
+.ct-compact-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+.ct-btn-parent.compact {
+  padding: 4px 12px;
+  font-size: 11.5px;
+  min-height: 28px;
+}
 .ct-kids-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 8px;
 }
-.ct-kid-card { ... }
-.ct-kid-avatar { ... }
-...`}
+.ct-kid-card {
+  padding: 8px 8px;
+  border-radius: 10px;
+}`}
 
-                {selectedFile === "package.json" && `{\n  "name": "MMM-ChoreTracker",\n  "version": "1.0.0",\n  "dependencies": {\n    "lowdb": "^1.0.0",\n    "uuid": "^11.1.1",\n    "write-file-atomic": "^5.0.0"\n  }\n}`}
+                {selectedFile === "package.json" && `{\n  "name": "MMM-ChoreTracker",\n  "version": "1.0.0",\n  "type": "commonjs",\n  "description": "Family chore tracking with zero external dependencies.",\n  "main": "MMM-ChoreTracker.js",\n  "dependencies": {}\n}`}
                 {selectedFile === "chores_db.json" && JSON.stringify({ profiles, tasks }, null, 2)}
                 {selectedFile === "payouts_db.json" && JSON.stringify({ payout_records: payouts }, null, 2)}
               </pre>

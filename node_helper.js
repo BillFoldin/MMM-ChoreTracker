@@ -19,9 +19,167 @@
 
 const fs = require("fs");
 const path = require("path");
-const writeFileAtomic = require("write-file-atomic");
-const low = require("lowdb");
-const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
+
+// Built-in UUID helper (uses crypto.randomUUID or fallback)
+function generateUuid() {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// Built-in atomic write utility to prevent SD card corruption on sudden Raspberry Pi power loss
+function atomicWriteFileSync(filePath, content) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (e) {}
+  }
+  const tempPath = path.join(
+    dir,
+    `.${path.basename(filePath)}.tmp.${Date.now()}.${Math.random().toString(36).substring(2, 6)}`
+  );
+  try {
+    const fd = fs.openSync(tempPath, "w", 0o644);
+    fs.writeSync(fd, content, 0, "utf8");
+    try {
+      fs.fsyncSync(fd);
+    } catch (syncErr) {}
+    fs.closeSync(fd);
+    fs.renameSync(tempPath, filePath);
+  } catch (err) {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch (cleanErr) {}
+    fs.writeFileSync(filePath, content, "utf8");
+  }
+}
+
+// Zero-dependency local JSON database engine (drops in seamlessly without requiring external lowdb)
+class LocalJsonDb {
+  constructor(sourcePath, defaultData = {}) {
+    this.sourcePath = sourcePath;
+    this.data = JSON.parse(JSON.stringify(defaultData));
+    this.read(defaultData);
+  }
+
+  read(defaultData = {}) {
+    if (fs.existsSync(this.sourcePath)) {
+      try {
+        const raw = fs.readFileSync(this.sourcePath, "utf8").trim();
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            this.data = parsed;
+            return this.data;
+          }
+        }
+      } catch (err) {
+        console.error(`[MMM-ChoreTracker] Error reading file ${this.sourcePath}:`, err.message);
+        try {
+          const backup = `${this.sourcePath}.corrupt.${Date.now()}`;
+          fs.copyFileSync(this.sourcePath, backup);
+          console.warn(`[MMM-ChoreTracker] Corrupt file backed up to ${backup}`);
+        } catch (backupErr) {}
+      }
+    }
+    // File not found or empty: initialize with defaults and save
+    if (defaultData) {
+      this.data = JSON.parse(JSON.stringify(defaultData));
+    }
+    this.write();
+    return this.data;
+  }
+
+  write() {
+    try {
+      const serialized = JSON.stringify(this.data, null, 2);
+      atomicWriteFileSync(this.sourcePath, serialized);
+    } catch (err) {
+      console.error(`[MMM-ChoreTracker] Error writing database to ${this.sourcePath}:`, err.message);
+    }
+    return this;
+  }
+
+  defaults(defaultValues) {
+    if (!this.data || typeof this.data !== "object") {
+      this.data = {};
+    }
+    let modified = false;
+    for (const key of Object.keys(defaultValues)) {
+      if (this.data[key] === undefined) {
+        this.data[key] = JSON.parse(JSON.stringify(defaultValues[key]));
+        modified = true;
+      }
+    }
+    if (modified) {
+      this.write();
+    }
+    return this;
+  }
+
+  getState() {
+    return this.data || {};
+  }
+
+  set(key, val) {
+    if (!this.data) this.data = {};
+    this.data[key] = val;
+    return this;
+  }
+
+  get(key) {
+    const self = this;
+    if (!this.data) this.data = {};
+    if (this.data[key] === undefined) {
+      this.data[key] = [];
+    }
+    const target = this.data[key];
+
+    return {
+      value: () => self.data[key],
+      find: (predicate) => {
+        const arr = Array.isArray(self.data[key]) ? self.data[key] : [];
+        const keyName = Object.keys(predicate)[0];
+        const targetVal = predicate[keyName];
+        const item = arr.find((x) => x && x[keyName] === targetVal);
+        return {
+          value: () => item,
+          assign: (updates) => {
+            if (item) {
+              Object.assign(item, updates);
+              self.write();
+            }
+            return { write: () => self.write() };
+          }
+        };
+      },
+      push: (newItem) => {
+        if (!Array.isArray(self.data[key])) self.data[key] = [];
+        self.data[key].push(newItem);
+        return { write: () => self.write() };
+      },
+      remove: (predicate) => {
+        if (Array.isArray(self.data[key])) {
+          const keyName = Object.keys(predicate)[0];
+          const targetVal = predicate[keyName];
+          const idx = self.data[key].findIndex((x) => x && x[keyName] === targetVal);
+          if (idx !== -1) {
+            self.data[key].splice(idx, 1);
+            self.write();
+          }
+        }
+        return { write: () => self.write() };
+      }
+    };
+  }
+}
 
 // MagicMirror NodeHelper base class support (with fallback for standalone execution/testing)
 let NodeHelper;
@@ -43,55 +201,6 @@ try {
       );
     }
   };
-}
-
-/**
- * Custom atomic file sync adapter for lowdb v1.
- * Wraps serialization and atomic writes using write-file-atomic with fsync: true.
- * This guarantees that partially-written or corrupt JSON files can NEVER occur
- * if a Raspberry Pi loses power mid-write.
- */
-class AtomicFileSync {
-  constructor(source, options = {}) {
-    this.source = source;
-    this.defaultValue = options.defaultValue || {};
-    this.serialize = options.serialize || ((data) => JSON.stringify(data, null, 2));
-    this.deserialize = options.deserialize || JSON.parse;
-  }
-
-  read() {
-    if (fs.existsSync(this.source)) {
-      try {
-        const raw = fs.readFileSync(this.source, "utf8").trim();
-        return raw ? this.deserialize(raw) : this.defaultValue;
-      } catch (err) {
-        console.error(`[MMM-ChoreTracker] Error reading file ${this.source}:`, err.message);
-        // Backup corrupt file to prevent total data loss before returning default
-        try {
-          const backupPath = `${this.source}.corrupt.${Date.now()}`;
-          fs.copyFileSync(this.source, backupPath);
-          console.warn(`[MMM-ChoreTracker] Corrupt file backed up to ${backupPath}`);
-        } catch (backupErr) {
-          console.error(`[MMM-ChoreTracker] Failed to create backup:`, backupErr.message);
-        }
-        return this.defaultValue;
-      }
-    }
-    // File doesn't exist yet: write default atomically and return it
-    this.write(this.defaultValue);
-    return this.defaultValue;
-  }
-
-  write(data) {
-    const serialized = this.serialize(data);
-    // write-file-atomic writes to a temp file in the same directory, then renames atomically.
-    // fsync: true forces the OS buffer to commit to physical flash/SD media.
-    writeFileAtomic.sync(this.source, serialized, {
-      encoding: "utf8",
-      fsync: true,
-      mode: 0o644
-    });
-  }
 }
 
 module.exports = NodeHelper.create({
@@ -120,38 +229,57 @@ module.exports = NodeHelper.create({
   },
 
   /**
-   * Resolve and initialize local databases using AtomicFileSync adapter
+   * Intelligently resolves data file paths across multiple possible module structures on Raspberry Pi
    */
-  initDatabases: function () {
-    const baseDir = this.path || __dirname;
-    const dbDir = path.resolve(baseDir, this.config.databaseDirectory || "");
+  resolveDataPath: function (filename, customDir) {
+    const sub = customDir || "data";
+    const candidates = [
+      // 1. Direct path in module data/ directory
+      path.resolve(__dirname, sub, filename),
+      // 2. Relative to this.path (if configured by MagicMirror)
+      this.path ? path.resolve(this.path, sub, filename) : null,
+      // 3. Directly in module root directory
+      path.resolve(__dirname, filename),
+      // 4. In this.path root
+      this.path ? path.resolve(this.path, filename) : null,
+      // 5. In MagicMirror root data/ folder
+      path.resolve(__dirname, "..", "..", sub, filename),
+      // 6. In MagicMirror root folder
+      path.resolve(__dirname, "..", "..", filename),
+      // 7. In current working directory (e.g. ~/MagicMirror)
+      path.resolve(process.cwd(), "modules", "MMM-ChoreTracker", sub, filename),
+      path.resolve(process.cwd(), sub, filename),
+      path.resolve(process.cwd(), filename)
+    ].filter(Boolean);
 
-    // Ensure database directory exists
-    if (!fs.existsSync(dbDir)) {
-      try {
-        fs.mkdirSync(dbDir, { recursive: true });
-      } catch (err) {
-        console.error(`[MMM-ChoreTracker] Could not create database directory ${dbDir}:`, err.message);
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        console.log(`[MMM-ChoreTracker] Located ${filename} at: ${candidate}`);
+        return candidate;
       }
     }
 
-    const choresPath = path.join(dbDir, "chores_db.json");
-    const payoutsPath = path.join(dbDir, "payouts_db.json");
+    // Default target: module data/ directory
+    const defaultDir = path.resolve(__dirname, sub);
+    if (!fs.existsSync(defaultDir)) {
+      try {
+        fs.mkdirSync(defaultDir, { recursive: true });
+      } catch (err) {}
+    }
+    const defaultFile = path.join(defaultDir, filename);
+    console.log(`[MMM-ChoreTracker] ${filename} not found in search paths. Will create at: ${defaultFile}`);
+    return defaultFile;
+  },
 
-    // Fallback if data files are in root
-    const resolvedChoresPath = fs.existsSync(choresPath)
-      ? choresPath
-      : fs.existsSync(path.join(baseDir, "chores_db.json"))
-      ? path.join(baseDir, "chores_db.json")
-      : choresPath;
+  /**
+   * Resolve and initialize local databases using zero-dependency resilient storage
+   */
+  initDatabases: function () {
+    const dbDirName = this.config.databaseDirectory || "data";
+    const resolvedChoresPath = this.resolveDataPath("chores_db.json", dbDirName);
+    const resolvedPayoutsPath = this.resolveDataPath("payouts_db.json", dbDirName);
 
-    const resolvedPayoutsPath = fs.existsSync(payoutsPath)
-      ? payoutsPath
-      : fs.existsSync(path.join(baseDir, "payouts_db.json"))
-      ? path.join(baseDir, "payouts_db.json")
-      : payoutsPath;
-
-    // Default schemas
+    // Default starter schema with Alex, Maya, and Leo
     const defaultChores = {
       profiles: [
         {
@@ -203,8 +331,42 @@ module.exports = NodeHelper.create({
           notes: []
         },
         {
+          id: "task_103",
+          title: "Feed the Family Cat",
+          category: "routine",
+          reward_amount: 0.0,
+          assigned_to: "child_02",
+          recurrence: {
+            frequency: "weekly",
+            days_of_week: [0, 1, 2, 3, 4, 5, 6]
+          },
+          last_completed_date: "2026-09-26",
+          is_completed_today: true,
+          notes: [
+            {
+              author: "Maya",
+              text: "Filled fresh water bowl too!",
+              timestamp: "2026-09-26T08:15:00Z"
+            }
+          ]
+        },
+        {
+          id: "task_104",
+          title: "Pack Backpack & School Clothes",
+          category: "routine",
+          reward_amount: 0.0,
+          assigned_to: "child_03",
+          recurrence: {
+            frequency: "weekly",
+            days_of_week: [0, 1, 2, 3, 4]
+          },
+          last_completed_date: "2026-09-25",
+          is_completed_today: false,
+          notes: []
+        },
+        {
           id: "task_201",
-          title: "Rake Leaves",
+          title: "Rake Leaves in Backyard",
           category: "monetized",
           reward_amount: 5.0,
           assigned_to: "up_for_grabs",
@@ -221,14 +383,54 @@ module.exports = NodeHelper.create({
         },
         {
           id: "task_202",
-          title: "Vacuum Living Room",
+          title: "Wash and Vacuum Family Car",
           category: "monetized",
-          reward_amount: 4.0,
+          reward_amount: 10.0,
+          assigned_to: "up_for_grabs",
+          recurrence: null,
+          is_completed: false,
+          is_approved: false,
+          notes: [
+            {
+              author: "Parent",
+              text: "Sponges and car soap are in the blue garage bin.",
+              timestamp: "2026-09-24T10:00:00Z"
+            }
+          ]
+        },
+        {
+          id: "task_203",
+          title: "Vacuum Living Room & Hallway",
+          category: "monetized",
+          reward_amount: 4.5,
           assigned_to: "child_01",
           recurrence: null,
           is_completed: true,
           is_approved: false,
-          notes: []
+          notes: [
+            {
+              author: "Alex",
+              text: "Finished dusting baseboards and ran the vacuum thoroughly.",
+              timestamp: "2026-09-26T11:30:00Z"
+            }
+          ]
+        },
+        {
+          id: "task_204",
+          title: "Sort Recycling and Breakdown Cardboard",
+          category: "monetized",
+          reward_amount: 3.0,
+          assigned_to: "child_02",
+          recurrence: null,
+          is_completed: true,
+          is_approved: true,
+          notes: [
+            {
+              author: "Maya",
+              text: "All flat boxes tied with twine.",
+              timestamp: "2026-09-25T16:00:00Z"
+            }
+          ]
         }
       ]
     };
@@ -243,22 +445,30 @@ module.exports = NodeHelper.create({
           date_range_end: "2026-09-25",
           processed_timestamp: "2026-09-25T18:00:00Z",
           approved_task_ids: ["task_201"]
+        },
+        {
+          id: "payout_1002",
+          profile_id: "child_02",
+          total_amount: 8.0,
+          date_range_start: "2026-09-15",
+          date_range_end: "2026-09-22",
+          processed_timestamp: "2026-09-22T19:30:00Z",
+          approved_task_ids: ["task_past_88"]
         }
       ]
     };
 
     try {
-      const choresAdapter = new AtomicFileSync(resolvedChoresPath, { defaultValue: defaultChores });
-      this.choresDb = low(choresAdapter);
+      this.choresDb = new LocalJsonDb(resolvedChoresPath, defaultChores);
       this.choresDb.defaults(defaultChores).write();
-      console.log(`[MMM-ChoreTracker] chores_db loaded from ${resolvedChoresPath}`);
+      const loadedProfiles = (this.choresDb.getState().profiles || []).map((p) => p.name);
+      console.log(`[MMM-ChoreTracker] chores_db loaded successfully from ${resolvedChoresPath} with ${loadedProfiles.length} profiles: [${loadedProfiles.join(", ")}]`);
 
-      const payoutsAdapter = new AtomicFileSync(resolvedPayoutsPath, { defaultValue: defaultPayouts });
-      this.payoutsDb = low(payoutsAdapter);
+      this.payoutsDb = new LocalJsonDb(resolvedPayoutsPath, defaultPayouts);
       this.payoutsDb.defaults(defaultPayouts).write();
-      console.log(`[MMM-ChoreTracker] payouts_db loaded from ${resolvedPayoutsPath}`);
+      console.log(`[MMM-ChoreTracker] payouts_db loaded successfully from ${resolvedPayoutsPath}`);
     } catch (err) {
-      console.error("[MMM-ChoreTracker] Fatal error initializing lowdb with atomic adapter:", err);
+      console.error("[MMM-ChoreTracker] Error initializing local databases:", err);
     }
   },
 
@@ -427,13 +637,19 @@ module.exports = NodeHelper.create({
     if (!this.choresDb || !this.payoutsDb) {
       this.initDatabases();
     }
-    const choresData = this.choresDb.getState();
-    const payoutsData = this.payoutsDb.getState();
+    const choresData = this.choresDb.getState() || {};
+    const payoutsData = this.payoutsDb.getState() || {};
+
+    const profiles = Array.isArray(choresData.profiles) ? choresData.profiles : [];
+    const tasks = Array.isArray(choresData.tasks) ? choresData.tasks : [];
+    const payoutRecords = Array.isArray(payoutsData.payout_records) ? payoutsData.payout_records : [];
+
+    console.log(`[MMM-ChoreTracker] Transmitting initial data: ${profiles.length} profiles (${profiles.map((p) => p.name).join(", ")}), ${tasks.length} tasks, ${payoutRecords.length} payout records.`);
 
     this.sendSocketNotification("INITIAL_DATA_RESPONSE", {
-      profiles: choresData.profiles || [],
-      tasks: choresData.tasks || [],
-      payout_records: payoutsData.payout_records || [],
+      profiles: profiles,
+      tasks: tasks,
+      payout_records: payoutRecords,
       serverDate: this.getLocalDateString(),
       currencySymbol: this.config.currencySymbol || "$"
     });
@@ -628,7 +844,7 @@ module.exports = NodeHelper.create({
     if (!this.choresDb || !payload || !payload.title) return;
 
     const isRoutine = payload.category === "routine";
-    const newId = `task_${Date.now()}_${uuidv4().substring(0, 4)}`;
+    const newId = `task_${Date.now()}_${generateUuid().substring(0, 4)}`;
 
     const newTask = {
       id: newId,
