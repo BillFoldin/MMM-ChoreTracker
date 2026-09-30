@@ -62,6 +62,19 @@ Module.register("MMM-ChoreTracker", {
   payoutFilterProfileId: "",
   payoutRangeDays: 7,
 
+  // On-screen Digital / Virtual Keyboard State
+  virtualKeyboard: {
+    isOpen: false,
+    targetInput: null,
+    title: "",
+    value: "",
+    type: "text",
+    mode: "alpha", // "alpha" | "symbols" | "numbers"
+    isShift: false,
+    onChange: null,
+    onConfirm: null
+  },
+
   /**
    * Return required stylesheet
    */
@@ -178,9 +191,349 @@ Module.register("MMM-ChoreTracker", {
   },
 
   /**
+   * Digital / On-Screen Virtual Keyboard System:
+   * Enables 100% touch typing on Raspberry Pi smart mirrors without requiring
+   * a hardwired physical keyboard.
+   */
+  attachVirtualKeyboard: function (element, title, type = "text", onChange = null, onConfirm = null) {
+    if (!element) return;
+    const self = this;
+    element.style.cursor = "pointer";
+    element.addEventListener("click", function (e) {
+      e.stopPropagation();
+      self.openVirtualKeyboard({
+        targetInput: element,
+        title: title || element.placeholder || "Enter text",
+        type: type,
+        value: element.value || "",
+        onChange: onChange,
+        onConfirm: onConfirm
+      });
+    });
+  },
+
+  openVirtualKeyboard: function (options) {
+    this.virtualKeyboard = {
+      isOpen: true,
+      targetInput: options.targetInput || null,
+      title: options.title || "Virtual Keyboard",
+      value: options.value !== undefined ? String(options.value) : (options.targetInput ? options.targetInput.value : ""),
+      type: options.type || "text",
+      mode: options.type === "number" ? "numbers" : "alpha",
+      isShift: false,
+      onChange: options.onChange || null,
+      onConfirm: options.onConfirm || null
+    };
+    this.renderVirtualKeyboard();
+  },
+
+  closeVirtualKeyboard: function () {
+    const existing = document.getElementById("ct-virtual-keyboard-root");
+    if (existing) {
+      existing.remove();
+    }
+    this.virtualKeyboard.isOpen = false;
+    this.virtualKeyboard.targetInput = null;
+  },
+
+  renderVirtualKeyboard: function () {
+    const self = this;
+    let container = document.getElementById("ct-virtual-keyboard-root");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "ct-virtual-keyboard-root";
+      container.className = "ct-virtual-keyboard-backdrop";
+      document.body.appendChild(container);
+    } else {
+      container.innerHTML = "";
+    }
+
+    const kb = document.createElement("div");
+    kb.className = "ct-virtual-keyboard";
+    kb.addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
+
+    // Top Bar with label and close button
+    const topBar = document.createElement("div");
+    topBar.className = "ct-vk-topbar";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "ct-vk-title";
+    titleEl.innerHTML = `<span>⌨️</span> <strong>${this.virtualKeyboard.title}</strong>`;
+    topBar.appendChild(titleEl);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "ct-vk-close-btn";
+    closeBtn.innerText = "✕ Close";
+    closeBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      self.closeVirtualKeyboard();
+    });
+    topBar.appendChild(closeBtn);
+    kb.appendChild(topBar);
+
+    // Live preview display row
+    const previewRow = document.createElement("div");
+    previewRow.className = "ct-vk-preview-row";
+
+    const previewDisplay = document.createElement("div");
+    previewDisplay.className = "ct-vk-preview-display";
+    previewDisplay.innerText = this.virtualKeyboard.value || "";
+    
+    const cursor = document.createElement("span");
+    cursor.className = "ct-vk-cursor";
+    previewDisplay.appendChild(cursor);
+    previewRow.appendChild(previewDisplay);
+
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "ct-vk-clear-btn";
+    clearBtn.innerText = "⌫ Clear";
+    clearBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      self.virtualKeyboard.value = "";
+      self.syncVirtualKeyboardValue();
+    });
+    previewRow.appendChild(clearBtn);
+    kb.appendChild(previewRow);
+
+    // Keys container
+    const keysContainer = document.createElement("div");
+    keysContainer.className = "ct-vk-keys-container";
+
+    if (this.virtualKeyboard.mode === "numbers") {
+      // NUMPAD MODE
+      const numRows = [
+        ["1", "2", "3", "+$1.00"],
+        ["4", "5", "6", "+$5.00"],
+        ["7", "8", "9", "+$10.00"],
+        [".", "0", "⌫ Del", "✓ Done"]
+      ];
+
+      numRows.forEach((row) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "ct-vk-row";
+        row.forEach((key) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ct-vk-key";
+
+          if (key === "✓ Done") {
+            btn.classList.add("key-done");
+          } else if (key === "⌫ Del") {
+            btn.classList.add("key-action");
+          } else if (key.startsWith("+")) {
+            btn.classList.add("key-quick-amount");
+          }
+
+          btn.innerText = key;
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (key === "✓ Done") {
+              self.commitVirtualKeyboard();
+            } else if (key === "⌫ Del") {
+              self.virtualKeyboard.value = self.virtualKeyboard.value.slice(0, -1);
+              self.syncVirtualKeyboardValue();
+            } else if (key.startsWith("+")) {
+              const addVal = parseFloat(key.replace(/[^\d.]/g, "")) || 0;
+              const cur = parseFloat(self.virtualKeyboard.value) || 0;
+              self.virtualKeyboard.value = (cur + addVal).toFixed(2);
+              self.syncVirtualKeyboardValue();
+            } else {
+              self.virtualKeyboard.value += key;
+              self.syncVirtualKeyboardValue();
+            }
+          });
+          rowEl.appendChild(btn);
+        });
+        keysContainer.appendChild(rowEl);
+      });
+
+      // Bottom switch row to full QWERTY
+      const switchRow = document.createElement("div");
+      switchRow.className = "ct-vk-row";
+      const switchBtn = document.createElement("button");
+      switchBtn.type = "button";
+      switchBtn.className = "ct-vk-key key-switch";
+      switchBtn.innerText = "⌨ Switch to Full ABC Keyboard";
+      switchBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        self.virtualKeyboard.mode = "alpha";
+        self.renderVirtualKeyboard();
+      });
+      switchRow.appendChild(switchBtn);
+      keysContainer.appendChild(switchRow);
+
+    } else if (this.virtualKeyboard.mode === "symbols") {
+      // SYMBOLS MODE
+      const symbolRows = [
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+        ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")"],
+        ["-", "_", "=", "+", "[", "]", "{", "}", "\\", "/"],
+        [":", ";", "\"", "'", "<", ">", "?", "!", "⌫ Del"],
+        ["ABC", ",", "␣ Space", ".", "✓ Done"]
+      ];
+
+      symbolRows.forEach((row) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "ct-vk-row";
+        row.forEach((key) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ct-vk-key";
+
+          if (key === "✓ Done") {
+            btn.classList.add("key-done");
+          } else if (key === "⌫ Del") {
+            btn.classList.add("key-action");
+          } else if (key === "ABC") {
+            btn.classList.add("key-mode");
+          } else if (key === "␣ Space") {
+            btn.classList.add("key-space");
+          }
+
+          btn.innerText = key;
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (key === "✓ Done") {
+              self.commitVirtualKeyboard();
+            } else if (key === "⌫ Del") {
+              self.virtualKeyboard.value = self.virtualKeyboard.value.slice(0, -1);
+              self.syncVirtualKeyboardValue();
+            } else if (key === "ABC") {
+              self.virtualKeyboard.mode = "alpha";
+              self.renderVirtualKeyboard();
+            } else if (key === "␣ Space") {
+              self.virtualKeyboard.value += " ";
+              self.syncVirtualKeyboardValue();
+            } else {
+              self.virtualKeyboard.value += key;
+              self.syncVirtualKeyboardValue();
+            }
+          });
+          rowEl.appendChild(btn);
+        });
+        keysContainer.appendChild(rowEl);
+      });
+
+    } else {
+      // ALPHA QWERTY MODE
+      const isShift = self.virtualKeyboard.isShift;
+      const alphaRows = [
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+        ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+        ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+        ["⇧ Shift", "z", "x", "c", "v", "b", "n", "m", "⌫ Del"],
+        ["?123", ",", "␣ Space", ".", "✓ Done"]
+      ];
+
+      alphaRows.forEach((row) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "ct-vk-row";
+        row.forEach((key) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ct-vk-key";
+
+          let displayKey = key;
+          if (key.length === 1 && /[a-z]/i.test(key)) {
+            displayKey = isShift ? key.toUpperCase() : key.toLowerCase();
+          }
+
+          if (key === "✓ Done") {
+            btn.classList.add("key-done");
+          } else if (key === "⌫ Del") {
+            btn.classList.add("key-action");
+          } else if (key === "⇧ Shift") {
+            btn.classList.add("key-shift");
+            if (isShift) btn.classList.add("active");
+          } else if (key === "?123") {
+            btn.classList.add("key-mode");
+          } else if (key === "␣ Space") {
+            btn.classList.add("key-space");
+          }
+
+          btn.innerText = displayKey;
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (key === "✓ Done") {
+              self.commitVirtualKeyboard();
+            } else if (key === "⌫ Del") {
+              self.virtualKeyboard.value = self.virtualKeyboard.value.slice(0, -1);
+              self.syncVirtualKeyboardValue();
+            } else if (key === "⇧ Shift") {
+              self.virtualKeyboard.isShift = !self.virtualKeyboard.isShift;
+              self.renderVirtualKeyboard();
+            } else if (key === "?123") {
+              self.virtualKeyboard.mode = "symbols";
+              self.renderVirtualKeyboard();
+            } else if (key === "␣ Space") {
+              self.virtualKeyboard.value += " ";
+              self.syncVirtualKeyboardValue();
+            } else {
+              self.virtualKeyboard.value += displayKey;
+              if (self.virtualKeyboard.isShift) {
+                self.virtualKeyboard.isShift = false;
+                self.renderVirtualKeyboard();
+              } else {
+                self.syncVirtualKeyboardValue();
+              }
+            }
+          });
+          rowEl.appendChild(btn);
+        });
+        keysContainer.appendChild(rowEl);
+      });
+    }
+
+    kb.appendChild(keysContainer);
+    container.appendChild(kb);
+
+    container.addEventListener("click", function (e) {
+      if (e.target === container) {
+        self.commitVirtualKeyboard();
+      }
+    });
+  },
+
+  syncVirtualKeyboardValue: function () {
+    const val = this.virtualKeyboard.value;
+    const preview = document.querySelector(".ct-vk-preview-display");
+    if (preview) {
+      preview.innerText = val;
+      const cursor = document.createElement("span");
+      cursor.className = "ct-vk-cursor";
+      preview.appendChild(cursor);
+    }
+    if (this.virtualKeyboard.targetInput) {
+      this.virtualKeyboard.targetInput.value = val;
+      this.virtualKeyboard.targetInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    if (typeof this.virtualKeyboard.onChange === "function") {
+      this.virtualKeyboard.onChange(val);
+    }
+  },
+
+  commitVirtualKeyboard: function () {
+    const val = this.virtualKeyboard.value;
+    if (this.virtualKeyboard.targetInput) {
+      this.virtualKeyboard.targetInput.value = val;
+      this.virtualKeyboard.targetInput.dispatchEvent(new Event("input", { bubbles: true }));
+      this.virtualKeyboard.targetInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (typeof this.virtualKeyboard.onConfirm === "function") {
+      this.virtualKeyboard.onConfirm(val);
+    }
+    this.closeVirtualKeyboard();
+  },
+
+  /**
    * Generates the pure vanilla DOM tree for MagicMirror²
    */
   closeModal: function () {
+    this.closeVirtualKeyboard();
     const existing = document.getElementById("ct-body-modal-overlay");
     if (existing) existing.remove();
     this.activeModal = null;
@@ -992,6 +1345,7 @@ Module.register("MMM-ChoreTracker", {
     noteInput.className = "ct-input";
     noteInput.style.flex = "1";
     noteInput.placeholder = `Add note as ${authorName}...`;
+    self.attachVirtualKeyboard(noteInput, `Add Note as ${authorName}`, "text");
 
     const postBtn = document.createElement("button");
     postBtn.className = "ct-btn-primary";
@@ -1499,6 +1853,9 @@ Module.register("MMM-ChoreTracker", {
     titleInput.addEventListener("input", function (e) {
       self.newTaskDraft.title = e.target.value;
     });
+    self.attachVirtualKeyboard(titleInput, "Chore Title", "text", function (val) {
+      self.newTaskDraft.title = val;
+    });
     titleGroup.appendChild(titleInput);
     form.appendChild(titleGroup);
 
@@ -1546,6 +1903,9 @@ Module.register("MMM-ChoreTracker", {
       rewardInput.value = this.newTaskDraft.reward_amount;
       rewardInput.addEventListener("input", function (e) {
         self.newTaskDraft.reward_amount = e.target.value;
+      });
+      self.attachVirtualKeyboard(rewardInput, `Reward Amount (${self.config.currencySymbol})`, "number", function (val) {
+        self.newTaskDraft.reward_amount = val;
       });
       rewardGroup.appendChild(rewardInput);
       form.appendChild(rewardGroup);
@@ -1686,6 +2046,9 @@ Module.register("MMM-ChoreTracker", {
     noteInput.addEventListener("input", function (e) {
       self.newTaskDraft.initial_note = e.target.value;
     });
+    self.attachVirtualKeyboard(noteInput, "Initial Instructions / Notes", "text", function (val) {
+      self.newTaskDraft.initial_note = val;
+    });
     noteGroup.appendChild(noteInput);
     form.appendChild(noteGroup);
 
@@ -1763,6 +2126,7 @@ Module.register("MMM-ChoreTracker", {
     addInput.className = "ct-input";
     addInput.placeholder = "Enter child's name (e.g. Emma, Lucas, Noah)...";
     addInput.style.flex = "1";
+    self.attachVirtualKeyboard(addInput, "New Child Name", "text");
 
     const addBtn = document.createElement("button");
     addBtn.className = "ct-btn-primary";
@@ -1824,6 +2188,7 @@ Module.register("MMM-ChoreTracker", {
       nameInput.value = profile.name;
       nameInput.style.flex = "1";
       nameInput.placeholder = "Child name...";
+      self.attachVirtualKeyboard(nameInput, `Rename Child: ${profile.name}`, "text");
 
       // Right actions
       const actions = document.createElement("div");

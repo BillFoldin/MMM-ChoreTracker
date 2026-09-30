@@ -23,7 +23,8 @@ import {
   ChevronRight,
   Info,
   X,
-  ArrowLeft
+  ArrowLeft,
+  Keyboard
 } from "lucide-react";
 
 interface Note {
@@ -372,6 +373,46 @@ export default function App() {
 
   // Quick note draft
   const [customNoteText, setCustomNoteText] = useState("");
+
+  // Digital / On-Screen Virtual Keyboard state
+  const [virtualKeyboard, setVirtualKeyboard] = useState<{
+    isOpen: boolean;
+    title: string;
+    value: string;
+    type: "text" | "number";
+    mode: "alpha" | "symbols" | "numbers";
+    isShift: boolean;
+    onConfirm: (val: string) => void;
+  }>({
+    isOpen: false,
+    title: "",
+    value: "",
+    type: "text",
+    mode: "alpha",
+    isShift: false,
+    onConfirm: () => {}
+  });
+
+  const openVirtualKeyboard = (
+    title: string,
+    initialVal: string,
+    type: "text" | "number" = "text",
+    onConfirm: (val: string) => void
+  ) => {
+    setVirtualKeyboard({
+      isOpen: true,
+      title,
+      value: initialVal || "",
+      type,
+      mode: type === "number" ? "numbers" : "alpha",
+      isShift: false,
+      onConfirm
+    });
+  };
+
+  const closeVirtualKeyboard = () => {
+    setVirtualKeyboard((prev) => ({ ...prev, isOpen: false }));
+  };
 
   // Clock
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -1574,10 +1615,15 @@ module.exports = NodeHelper.create({ ... });`}
                   placeholder="Add instructions or update note..."
                   value={customNoteText}
                   onChange={(e) => setCustomNoteText(e.target.value)}
+                  onClick={() =>
+                    openVirtualKeyboard("Chore Note", customNoteText, "text", (val) =>
+                      setCustomNoteText(val)
+                    )
+                  }
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleAddNote(activeTask.id, customNoteText);
                   }}
-                  className="flex-1 bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                  className="flex-1 bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 cursor-pointer"
                 />
                 <button
                   type="button"
@@ -1843,8 +1889,13 @@ module.exports = NodeHelper.create({ ... });`}
                     type="text"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
+                    onClick={() =>
+                      openVirtualKeyboard("Chore Title", newTitle, "text", (val) =>
+                        setNewTitle(val)
+                      )
+                    }
                     placeholder="e.g., Wash family car, Clean room, Vacuum living room..."
-                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400"
+                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
                   />
                 </div>
 
@@ -1884,7 +1935,12 @@ module.exports = NodeHelper.create({ ... });`}
                       step="0.50"
                       value={newReward}
                       onChange={(e) => setNewReward(e.target.value)}
-                      className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400"
+                      onClick={() =>
+                        openVirtualKeyboard("Reward Amount ($)", newReward, "number", (val) =>
+                          setNewReward(val)
+                        )
+                      }
+                      className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
                     />
                   </div>
                 ) : (
@@ -2006,11 +2062,16 @@ module.exports = NodeHelper.create({ ... });`}
                       type="text"
                       value={newChildName}
                       onChange={(e) => setNewChildName(e.target.value)}
+                      onClick={() =>
+                        openVirtualKeyboard("New Child Name", newChildName, "text", (val) =>
+                          setNewChildName(val)
+                        )
+                      }
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleAddChild();
                       }}
                       placeholder="Enter child's name (e.g. Emma, Lucas, Noah)..."
-                      className="flex-1 bg-slate-950 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                      className="flex-1 bg-slate-950 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 cursor-pointer"
                     />
                     <button
                       type="button"
@@ -2055,8 +2116,13 @@ module.exports = NodeHelper.create({ ... });`}
                           onChange={(e) =>
                             setEditingChildNames((prev) => ({ ...prev, [p.id]: e.target.value }))
                           }
+                          onClick={() =>
+                            openVirtualKeyboard(`Rename Child: ${p.name}`, currentInputVal, "text", (val) =>
+                              setEditingChildNames((prev) => ({ ...prev, [p.id]: val }))
+                            )
+                          }
                           placeholder="Child name..."
-                          className="flex-1 min-w-[140px] bg-slate-950 border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-sky-400"
+                          className="flex-1 min-w-[140px] bg-slate-950 border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
                         />
 
                         <div className="flex items-center gap-2 shrink-0">
@@ -2186,6 +2252,252 @@ module.exports = NodeHelper.create({ ... });`}
               </div>
             )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIGITAL ON-SCREEN VIRTUAL KEYBOARD OVERLAY */}
+      {virtualKeyboard.isOpen && (
+        <div
+          onClick={closeVirtualKeyboard}
+          className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-xs flex flex-col justify-end p-2 sm:p-4 select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl mx-auto bg-slate-900 border border-white/20 rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3"
+          >
+            {/* Top Bar */}
+            <div className="flex justify-between items-center px-1">
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-300 font-bold">
+                <Keyboard className="w-4 h-4 text-sky-400" />
+                <span>Typing:</span>
+                <span className="text-sky-400 font-black">{virtualKeyboard.title}</span>
+              </div>
+              <button
+                type="button"
+                onClick={closeVirtualKeyboard}
+                className="text-xs font-bold text-slate-400 hover:text-white px-3 py-1 bg-white/10 rounded-full cursor-pointer transition"
+              >
+                ✕ Cancel
+              </button>
+            </div>
+
+            {/* Live Preview Display with Cursor and Clear */}
+            <div className="flex items-center gap-3 bg-slate-950 border border-sky-400/40 rounded-2xl px-4 py-3 shadow-inner">
+              <div className="flex-1 font-mono text-base sm:text-lg text-white font-semibold flex items-center min-h-[28px] break-all">
+                <span>{virtualKeyboard.value}</span>
+                <span className="inline-block w-0.5 h-5 bg-sky-400 ml-1 animate-pulse" />
+              </div>
+              {virtualKeyboard.value && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVirtualKeyboard((prev) => ({ ...prev, value: "" }));
+                    virtualKeyboard.onConfirm("");
+                  }}
+                  className="text-xs text-rose-400 hover:text-rose-300 px-2.5 py-1 bg-rose-500/10 rounded-lg cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Keys Grid */}
+            {virtualKeyboard.mode === "numbers" ? (
+              /* NUMPAD MODE FOR CURRENCY/NUMBERS */
+              <div className="space-y-2">
+                {[
+                  ["1", "2", "3", "+$1.00"],
+                  ["4", "5", "6", "+$5.00"],
+                  ["7", "8", "9", "+$10.00"],
+                  [".", "0", "⌫ Del", "✓ Done"]
+                ].map((row, rIdx) => (
+                  <div key={rIdx} className="flex gap-2">
+                    {row.map((key) => {
+                      const isDone = key === "✓ Done";
+                      const isDel = key === "⌫ Del";
+                      const isQuick = key.startsWith("+");
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            if (isDone) {
+                              virtualKeyboard.onConfirm(virtualKeyboard.value);
+                              closeVirtualKeyboard();
+                            } else if (isDel) {
+                              const nextVal = virtualKeyboard.value.slice(0, -1);
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            } else if (isQuick) {
+                              const add = parseFloat(key.replace(/[^\d.]/g, "")) || 0;
+                              const cur = parseFloat(virtualKeyboard.value) || 0;
+                              const nextVal = (cur + add).toFixed(2);
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            } else {
+                              const nextVal = virtualKeyboard.value + key;
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            }
+                          }}
+                          className={`flex-1 py-3.5 rounded-xl font-bold text-sm sm:text-base transition cursor-pointer active:scale-95 ${
+                            isDone
+                              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 flex-[1.4]"
+                              : isDel
+                              ? "bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
+                              : isQuick
+                              ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                              : "bg-white/10 hover:bg-white/20 text-white"
+                          }`}
+                        >
+                          {key}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setVirtualKeyboard((prev) => ({ ...prev, mode: "alpha" }))}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold text-purple-300 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 transition cursor-pointer"
+                >
+                  ⌨ Switch to Full ABC Keyboard
+                </button>
+              </div>
+            ) : virtualKeyboard.mode === "symbols" ? (
+              /* SYMBOLS MODE */
+              <div className="space-y-1.5 sm:space-y-2">
+                {[
+                  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+                  ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")"],
+                  ["-", "_", "=", "+", "[", "]", "{", "}", "\\", "/"],
+                  [":", ";", "\"", "'", "<", ">", "?", "⌫ Del"],
+                  ["ABC", ",", "␣ Space", ".", "✓ Done"]
+                ].map((row, rIdx) => (
+                  <div key={rIdx} className="flex gap-1.5 sm:gap-2">
+                    {row.map((key) => {
+                      const isDone = key === "✓ Done";
+                      const isDel = key === "⌫ Del";
+                      const isSpace = key === "␣ Space";
+                      const isABC = key === "ABC";
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            if (isDone) {
+                              virtualKeyboard.onConfirm(virtualKeyboard.value);
+                              closeVirtualKeyboard();
+                            } else if (isDel) {
+                              const nextVal = virtualKeyboard.value.slice(0, -1);
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            } else if (isABC) {
+                              setVirtualKeyboard((prev) => ({ ...prev, mode: "alpha" }));
+                            } else if (isSpace) {
+                              const nextVal = virtualKeyboard.value + " ";
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            } else {
+                              const nextVal = virtualKeyboard.value + key;
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            }
+                          }}
+                          className={`min-h-[44px] sm:min-h-[48px] py-2.5 rounded-xl font-bold text-sm sm:text-base transition cursor-pointer active:scale-95 ${
+                            isDone
+                              ? "flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30"
+                              : isSpace
+                              ? "flex-[4] bg-white/10 hover:bg-white/20 text-slate-400"
+                              : isDel
+                              ? "flex-[1.4] bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
+                              : isABC
+                              ? "flex-[1.4] bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
+                              : "flex-1 bg-white/10 hover:bg-white/20 text-white"
+                          }`}
+                        >
+                          {key}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* QWERTY ALPHA MODE */
+              <div className="space-y-1.5 sm:space-y-2">
+                {[
+                  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+                  ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+                  ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+                  ["⇧ Shift", "z", "x", "c", "v", "b", "n", "m", "⌫ Del"],
+                  ["?123", ",", "␣ Space", ".", "✓ Done"]
+                ].map((row, rIdx) => (
+                  <div key={rIdx} className="flex gap-1.5 sm:gap-2">
+                    {row.map((key) => {
+                      const isDone = key === "✓ Done";
+                      const isDel = key === "⌫ Del";
+                      const isSpace = key === "␣ Space";
+                      const isShift = key === "⇧ Shift";
+                      const isSymbols = key === "?123";
+                      let displayKey = key;
+                      if (key.length === 1 && /[a-z]/i.test(key)) {
+                        displayKey = virtualKeyboard.isShift ? key.toUpperCase() : key.toLowerCase();
+                      }
+
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            if (isDone) {
+                              virtualKeyboard.onConfirm(virtualKeyboard.value);
+                              closeVirtualKeyboard();
+                            } else if (isDel) {
+                              const nextVal = virtualKeyboard.value.slice(0, -1);
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            } else if (isShift) {
+                              setVirtualKeyboard((prev) => ({ ...prev, isShift: !prev.isShift }));
+                            } else if (isSymbols) {
+                              setVirtualKeyboard((prev) => ({ ...prev, mode: "symbols" }));
+                            } else if (isSpace) {
+                              const nextVal = virtualKeyboard.value + " ";
+                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            } else {
+                              const nextVal = virtualKeyboard.value + displayKey;
+                              setVirtualKeyboard((prev) => ({
+                                ...prev,
+                                value: nextVal,
+                                isShift: false
+                              }));
+                              virtualKeyboard.onConfirm(nextVal);
+                            }
+                          }}
+                          className={`min-h-[44px] sm:min-h-[48px] py-2.5 rounded-xl font-bold text-sm sm:text-base transition cursor-pointer active:scale-95 ${
+                            isDone
+                              ? "flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30"
+                              : isSpace
+                              ? "flex-[4] bg-white/10 hover:bg-white/20 text-slate-400"
+                              : isDel
+                              ? "flex-[1.4] bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
+                              : isShift
+                              ? `flex-[1.4] ${virtualKeyboard.isShift ? "bg-sky-500 text-white" : "bg-white/10 text-white hover:bg-white/20"}`
+                              : isSymbols
+                              ? "flex-[1.4] bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
+                              : "flex-1 bg-white/10 hover:bg-white/20 text-white"
+                          }`}
+                        >
+                          {displayKey}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

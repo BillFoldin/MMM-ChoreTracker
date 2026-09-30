@@ -25,14 +25,19 @@
    - **Routine Expectations**: Non-monetary standard family duties ($0.00) with scheduled recurring days.
    - **Monetized Bounties**: High-contrast reward amounts (`$X.XX Bounty`) with completion and parent approval states.
 
-5. **Threaded Chore Notes**:
-   - Full modal with real-time threaded notes and instructions between parents and children.
-   - Touchscreen quick-comment chips for instant touch communication without tedious keyboard typing.
+5. **Built-in Digital On-Screen Touch Keyboard**:
+   - Zero physical keyboard required! Whenever you touch any text field, child name, note, or reward amount, an on-screen keyboard slides up from the bottom of the screen.
+   - Includes full QWERTY keyboard, dedicated top numbers row, Shift, symbols toggle (`?123`), quick monetary amount buttons (`+$1`, `+$5`, `+$10`), live preview display, and `✓ Done`.
 
-6. **PIN-Protected Parent Administration Dashboard**:
+6. **Threaded Chore Notes**:
+   - Full modal with real-time threaded notes and instructions between parents and children.
+   - Touchscreen quick-comment chips for instant touch communication without tedious typing.
+
+7. **PIN-Protected Parent Administration Dashboard**:
    - 4-digit touchscreen numeric keypad with dot masks and feedback.
    - **Task Approvals**: Review completed monetized chores and queue them for payout.
-   - **Chore Creator**: Add new routine or monetized chores directly from the mirror screen.
+   - **Chore Creator**: Add new routine or monetized chores with multi-child selection directly from the mirror screen.
+   - **Manage Children**: Easily rename children or add new family members right on the mirror with the digital keyboard.
    - **Payout & Audit Engine**: Calculates earnings, generates immutable logs in `payouts_db.json`, and archives/resets paid chores to prevent double payouts.
    - **Payout History Log**: Full historical ledger of all past allowances paid out.
 
