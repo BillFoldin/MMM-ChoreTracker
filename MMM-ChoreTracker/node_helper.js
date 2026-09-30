@@ -617,6 +617,18 @@ module.exports = NodeHelper.create({
         this.handleDeleteTask(payload);
         break;
 
+      case "ADD_PROFILE":
+        this.handleAddProfile(payload);
+        break;
+
+      case "UPDATE_PROFILE":
+        this.handleUpdateProfile(payload);
+        break;
+
+      case "DELETE_PROFILE":
+        this.handleDeleteProfile(payload);
+        break;
+
       case "PROCESS_PAYOUT":
         this.handleProcessPayout(payload);
         break;
@@ -838,44 +850,134 @@ module.exports = NodeHelper.create({
   },
 
   /**
-   * Creates a new chore directly from the touchscreen UI
+   * Creates one or multiple chore instances directly from the touchscreen UI.
+   * If assigned to multiple children (array), creates an individual chore for each child.
    */
   handleCreateTask: function (payload) {
     if (!this.choresDb || !payload || !payload.title) return;
 
-    const isRoutine = payload.category === "routine";
-    const newId = `task_${Date.now()}_${generateUuid().substring(0, 4)}`;
+    let assignedList = [];
+    if (Array.isArray(payload.assigned_tos)) {
+      assignedList = payload.assigned_tos;
+    } else if (Array.isArray(payload.assigned_to)) {
+      assignedList = payload.assigned_to;
+    } else if (typeof payload.assigned_to === "string") {
+      assignedList = [payload.assigned_to];
+    }
 
-    const newTask = {
-      id: newId,
-      title: String(payload.title).trim(),
-      category: isRoutine ? "routine" : "monetized",
-      reward_amount: isRoutine ? 0.0 : parseFloat(payload.reward_amount) || 0.0,
-      assigned_to: payload.assigned_to || "up_for_grabs",
-      recurrence: isRoutine
-        ? {
-            frequency: "weekly",
-            days_of_week: Array.isArray(payload.days_of_week) && payload.days_of_week.length > 0
-              ? payload.days_of_week.map(Number)
-              : [0, 1, 2, 3, 4, 5, 6]
+    if (assignedList.length === 0) {
+      assignedList = ["up_for_grabs"];
+    }
+
+    const isRoutine = payload.category === "routine";
+    const initialNotes = payload.initial_note
+      ? [
+          {
+            author: "Parent",
+            text: String(payload.initial_note).trim(),
+            timestamp: new Date().toISOString()
           }
-        : null,
-      last_completed_date: "",
-      is_completed_today: false,
-      is_completed: false,
-      is_approved: false,
-      notes: payload.initial_note
-        ? [
-            {
-              author: "Parent",
-              text: String(payload.initial_note).trim(),
-              timestamp: new Date().toISOString()
+        ]
+      : [];
+
+    assignedList.forEach((assigneeId, idx) => {
+      const newId = `task_${Date.now()}_${idx}_${generateUuid().substring(0, 4)}`;
+      const newTask = {
+        id: newId,
+        title: String(payload.title).trim(),
+        category: isRoutine ? "routine" : "monetized",
+        reward_amount: isRoutine ? 0.0 : parseFloat(payload.reward_amount) || 0.0,
+        assigned_to: assigneeId,
+        recurrence: isRoutine
+          ? {
+              frequency: "weekly",
+              days_of_week: Array.isArray(payload.days_of_week) && payload.days_of_week.length > 0
+                ? payload.days_of_week.map(Number)
+                : [0, 1, 2, 3, 4, 5, 6]
             }
-          ]
-        : []
+          : null,
+        last_completed_date: "",
+        is_completed_today: false,
+        is_completed: false,
+        is_approved: false,
+        notes: [...initialNotes]
+      };
+
+      this.choresDb.get("tasks").push(newTask);
+    });
+
+    this.choresDb.write();
+    console.log(`[MMM-ChoreTracker] Created chore "${payload.title}" for ${assignedList.length} assignees: [${assignedList.join(", ")}]`);
+    this.broadcastChoresUpdate();
+  },
+
+  /**
+   * Adds a new child profile to the database
+   */
+  handleAddProfile: function (payload) {
+    if (!this.choresDb || !payload || !payload.name) return;
+    const name = String(payload.name).trim();
+    if (!name) return;
+
+    const newId = `child_${Date.now()}_${generateUuid().substring(0, 4)}`;
+    const newProfile = {
+      id: newId,
+      name: name,
+      pin: null,
+      icon: `assets/icons/${name.toLowerCase().replace(/[^a-z0-9]/g, "")}.png`
     };
 
-    this.choresDb.get("tasks").push(newTask).write();
+    this.choresDb.get("profiles").push(newProfile).write();
+    console.log(`[MMM-ChoreTracker] Added child profile "${name}" (${newId})`);
+    this.broadcastChoresUpdate();
+  },
+
+  /**
+   * Updates an existing child profile name
+   */
+  handleUpdateProfile: function (payload) {
+    if (!this.choresDb || !payload || !payload.profileId || !payload.name) return;
+    const { profileId, name } = payload;
+    const trimmedName = String(name).trim();
+    if (!trimmedName) return;
+
+    const profile = this.choresDb.get("profiles").find({ id: profileId }).value();
+    if (!profile) return;
+
+    this.choresDb
+      .get("profiles")
+      .find({ id: profileId })
+      .assign({ name: trimmedName })
+      .write();
+
+    console.log(`[MMM-ChoreTracker] Renamed profile ${profileId} to "${trimmedName}"`);
+    this.broadcastChoresUpdate();
+  },
+
+  /**
+   * Deletes a child profile and optionally unassigns their tasks
+   */
+  handleDeleteProfile: function (payload) {
+    if (!this.choresDb || !payload || !payload.profileId) return;
+    const { profileId } = payload;
+
+    this.choresDb.get("profiles").remove({ id: profileId }).write();
+
+    // Reassign any remaining tasks belonging to deleted child to "up_for_grabs"
+    const tasks = this.choresDb.get("tasks").value() || [];
+    let updatedTasks = false;
+    tasks.forEach((t) => {
+      if (t.assigned_to === profileId) {
+        t.assigned_to = "up_for_grabs";
+        updatedTasks = true;
+      }
+    });
+
+    if (updatedTasks) {
+      this.choresDb.set("tasks", tasks).write();
+    }
+
+    console.log(`[MMM-ChoreTracker] Removed child profile ${profileId}`);
     this.broadcastChoresUpdate();
   },
 

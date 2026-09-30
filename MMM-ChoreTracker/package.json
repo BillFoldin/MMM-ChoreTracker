@@ -2,7 +2,7 @@
   "name": "MMM-ChoreTracker",
   "version": "1.0.0",
   "type": "commonjs",
-  "description": "MagicMirror² module for family chore tracking, allowance payout audits, and routine recurrence.",
+  "description": "MagicMirror² module for family chore tracking with zero external dependencies.",
   "main": "MMM-ChoreTracker.js",
   "scripts": {
     "test": "node node_helper.js"
@@ -17,11 +17,6 @@
     "raspberry-pi",
     "family"
   ],
-  "author": "Senior Full-Stack JavaScript Engineer",
-  "license": "MIT",
-  "dependencies": {
-    "lowdb": "^1.0.0",
-    "uuid": "^11.1.1",
-    "write-file-atomic": "^5.0.0"
-  }
+  "author": "Community",
+  "license": "MIT"
 }

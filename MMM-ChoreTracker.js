@@ -53,7 +53,7 @@ Module.register("MMM-ChoreTracker", {
     title: "",
     category: "monetized",
     reward_amount: "5.00",
-    assigned_to: "up_for_grabs",
+    assigned_to: ["up_for_grabs"], // Array of selected child IDs or ['up_for_grabs']
     days_of_week: [0, 1, 2, 3, 4, 5, 6],
     initial_note: ""
   },
@@ -1338,6 +1338,7 @@ Module.register("MMM-ChoreTracker", {
     const tabDefinitions = [
       { id: "approvals", label: "Task Approvals" },
       { id: "create_task", label: "Create Chore" },
+      { id: "children", label: "Children" },
       { id: "payout_engine", label: "Payout & Audit" },
       { id: "history", label: "Payout Log" }
     ];
@@ -1359,6 +1360,8 @@ Module.register("MMM-ChoreTracker", {
       body.appendChild(this.buildApprovalsTab());
     } else if (this.parentActiveTab === "create_task") {
       body.appendChild(this.buildCreateTaskTab());
+    } else if (this.parentActiveTab === "children") {
+      body.appendChild(this.buildChildrenTab());
     } else if (this.parentActiveTab === "payout_engine") {
       body.appendChild(this.buildPayoutEngineTab());
     } else if (this.parentActiveTab === "history") {
@@ -1588,32 +1591,86 @@ Module.register("MMM-ChoreTracker", {
       form.appendChild(daysGroup);
     }
 
-    // Assigned To dropdown
+    // Multi-Child Assign Chore To Selector
     const assignGroup = document.createElement("div");
     assignGroup.className = "ct-form-group";
-    assignGroup.innerHTML = `<label class="ct-form-label">Assign Chore To</label>`;
+    assignGroup.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <label class="ct-form-label" style="margin:0;">Assign Chore To</label>
+        <span style="font-size:11px; color:#94a3b8;">Select one or multiple children</span>
+      </div>
+    `;
 
-    const assignSelect = document.createElement("select");
-    assignSelect.className = "ct-select";
+    const chipsGrid = document.createElement("div");
+    chipsGrid.className = "ct-assign-chips-grid";
 
-    const optGrabs = document.createElement("option");
-    optGrabs.value = "up_for_grabs";
-    optGrabs.innerText = "⚡ Up For Grabs (Open Bounty)";
-    assignSelect.appendChild(optGrabs);
+    const currentAssigned = Array.isArray(self.newTaskDraft.assigned_to)
+      ? self.newTaskDraft.assigned_to
+      : [self.newTaskDraft.assigned_to || "up_for_grabs"];
 
+    // "Up For Grabs" Chip
+    const grabsChip = document.createElement("button");
+    grabsChip.type = "button";
+    const isGrabs = currentAssigned.includes("up_for_grabs");
+    grabsChip.className = `ct-assign-chip grabs ${isGrabs ? "selected" : ""}`;
+    grabsChip.innerHTML = `<span>⚡</span> <strong>Up For Grabs</strong> <small style="opacity:0.8;">(Open bounty)</small>`;
+    grabsChip.addEventListener("click", function (e) {
+      e.preventDefault();
+      self.newTaskDraft.assigned_to = ["up_for_grabs"];
+      self.updateDom(50);
+    });
+    chipsGrid.appendChild(grabsChip);
+
+    // Each Child's Chip
     this.profiles.forEach((p) => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.innerText = `👤 ${p.name}`;
-      if (self.newTaskDraft.assigned_to === p.id) opt.selected = true;
-      assignSelect.appendChild(opt);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      const isSelected = currentAssigned.includes(p.id);
+      chip.className = `ct-assign-chip ${isSelected ? "selected" : ""}`;
+      chip.innerHTML = `${isSelected ? "✓" : "+"} 👤 <strong>${p.name}</strong>`;
+
+      chip.addEventListener("click", function (e) {
+        e.preventDefault();
+        let arr = currentAssigned.filter((x) => x !== "up_for_grabs");
+        if (arr.includes(p.id)) {
+          arr = arr.filter((x) => x !== p.id);
+        } else {
+          arr.push(p.id);
+        }
+        if (arr.length === 0) {
+          arr = ["up_for_grabs"];
+        }
+        self.newTaskDraft.assigned_to = arr;
+        self.updateDom(50);
+      });
+
+      chipsGrid.appendChild(chip);
     });
 
-    assignSelect.addEventListener("change", function (e) {
-      self.newTaskDraft.assigned_to = e.target.value;
-    });
+    assignGroup.appendChild(chipsGrid);
 
-    assignGroup.appendChild(assignSelect);
+    // Helper button: Select All Children
+    if (this.profiles.length > 1) {
+      const helperRow = document.createElement("div");
+      helperRow.style.display = "flex";
+      helperRow.style.gap = "8px";
+      helperRow.style.marginTop = "6px";
+
+      const selectAllBtn = document.createElement("button");
+      selectAllBtn.type = "button";
+      selectAllBtn.className = "ct-btn-secondary";
+      selectAllBtn.style.padding = "4px 10px";
+      selectAllBtn.style.fontSize = "11.5px";
+      selectAllBtn.innerText = "👥 Assign to All Children";
+      selectAllBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        self.newTaskDraft.assigned_to = self.profiles.map((p) => p.id);
+        self.updateDom(50);
+      });
+      helperRow.appendChild(selectAllBtn);
+      assignGroup.appendChild(helperRow);
+    }
+
     form.appendChild(assignGroup);
 
     // Initial Parent Note / Instructions
@@ -1642,11 +1699,16 @@ Module.register("MMM-ChoreTracker", {
         return;
       }
 
+      const assignList = (Array.isArray(self.newTaskDraft.assigned_to) && self.newTaskDraft.assigned_to.length > 0)
+        ? self.newTaskDraft.assigned_to
+        : ["up_for_grabs"];
+
       self.sendSocketNotification("CREATE_TASK", {
         title: self.newTaskDraft.title,
         category: self.newTaskDraft.category,
         reward_amount: self.newTaskDraft.reward_amount,
-        assigned_to: self.newTaskDraft.assigned_to,
+        assigned_tos: assignList,
+        assigned_to: assignList[0],
         days_of_week: self.newTaskDraft.days_of_week,
         initial_note: self.newTaskDraft.initial_note
       });
@@ -1656,7 +1718,7 @@ Module.register("MMM-ChoreTracker", {
         title: "",
         category: "monetized",
         reward_amount: "5.00",
-        assigned_to: "up_for_grabs",
+        assigned_to: ["up_for_grabs"],
         days_of_week: [0, 1, 2, 3, 4, 5, 6],
         initial_note: ""
       };
@@ -1668,6 +1730,144 @@ Module.register("MMM-ChoreTracker", {
     form.appendChild(submitBtn);
 
     return form;
+  },
+
+  /**
+   * Children Management Tab:
+   * Easily rename existing children or add new children to the family tracker.
+   */
+  buildChildrenTab: function () {
+    const self = this;
+    const container = document.createElement("div");
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.gap = "16px";
+
+    // 1. Add New Child Card
+    const addCard = document.createElement("div");
+    addCard.className = "ct-manage-child-card add-card";
+
+    const addTitle = document.createElement("h4");
+    addTitle.style.margin = "0 0 8px 0";
+    addTitle.style.fontSize = "14px";
+    addTitle.style.fontWeight = "700";
+    addTitle.style.color = "#38bdf8";
+    addTitle.innerText = "➕ Add a New Child";
+    addCard.appendChild(addTitle);
+
+    const addRow = document.createElement("div");
+    addRow.style.display = "flex";
+    addRow.style.gap = "10px";
+
+    const addInput = document.createElement("input");
+    addInput.className = "ct-input";
+    addInput.placeholder = "Enter child's name (e.g. Emma, Lucas, Noah)...";
+    addInput.style.flex = "1";
+
+    const addBtn = document.createElement("button");
+    addBtn.className = "ct-btn-primary";
+    addBtn.innerText = "Add Child";
+    addBtn.style.whiteSpace = "nowrap";
+
+    addBtn.addEventListener("click", function () {
+      const name = addInput.value.trim();
+      if (!name) return;
+      self.sendSocketNotification("ADD_PROFILE", { name: name });
+      addInput.value = "";
+    });
+
+    addInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        addBtn.click();
+      }
+    });
+
+    addRow.appendChild(addInput);
+    addRow.appendChild(addBtn);
+    addCard.appendChild(addRow);
+    container.appendChild(addCard);
+
+    // 2. Existing Children List
+    const listHeader = document.createElement("div");
+    listHeader.style.display = "flex";
+    listHeader.style.justifyContent = "space-between";
+    listHeader.style.alignItems = "center";
+    listHeader.innerHTML = `
+      <h4 style="margin:0; font-size:14px; font-weight:700; color:#fff;">
+        Family Children (${this.profiles.length})
+      </h4>
+      <span style="font-size:11px; color:#94a3b8;">Edit names or manage profiles</span>
+    `;
+    container.appendChild(listHeader);
+
+    const avatarGradients = [
+      "linear-gradient(135deg, #3b82f6, #1d4ed8)",
+      "linear-gradient(135deg, #a855f7, #7e22ce)",
+      "linear-gradient(135deg, #f59e0b, #d97706)",
+      "linear-gradient(135deg, #ec4899, #be185d)"
+    ];
+
+    this.profiles.forEach((profile, idx) => {
+      const childCard = document.createElement("div");
+      childCard.className = "ct-manage-child-card";
+
+      // Left: avatar badge
+      const avatar = document.createElement("div");
+      avatar.className = "ct-kid-avatar";
+      avatar.style.background = avatarGradients[idx % avatarGradients.length];
+      avatar.innerText = profile.name;
+      childCard.appendChild(avatar);
+
+      // Middle: editable input for name
+      const nameInput = document.createElement("input");
+      nameInput.className = "ct-input";
+      nameInput.value = profile.name;
+      nameInput.style.flex = "1";
+      nameInput.placeholder = "Child name...";
+
+      // Right actions
+      const actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.gap = "8px";
+
+      // Save / Rename button
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "ct-btn-secondary";
+      saveBtn.innerText = "💾 Save Name";
+      saveBtn.addEventListener("click", function () {
+        const newName = nameInput.value.trim();
+        if (!newName) return;
+        self.sendSocketNotification("UPDATE_PROFILE", {
+          profileId: profile.id,
+          name: newName
+        });
+        saveBtn.innerText = "✓ Saved!";
+        setTimeout(() => {
+          saveBtn.innerText = "💾 Save Name";
+        }, 1500);
+      });
+      actions.appendChild(saveBtn);
+
+      // Remove button (if more than 1 child exists)
+      if (self.profiles.length > 1) {
+        const delBtn = document.createElement("button");
+        delBtn.className = "ct-btn-danger";
+        delBtn.style.padding = "6px 12px";
+        delBtn.innerText = "🗑 Remove";
+        delBtn.addEventListener("click", function () {
+          if (confirm(`Are you sure you want to remove ${profile.name}? Any assigned chores will become Up For Grabs.`)) {
+            self.sendSocketNotification("DELETE_PROFILE", { profileId: profile.id });
+          }
+        });
+        actions.appendChild(delBtn);
+      }
+
+      childCard.appendChild(nameInput);
+      childCard.appendChild(actions);
+      container.appendChild(childCard);
+    });
+
+    return container;
   },
 
   /**

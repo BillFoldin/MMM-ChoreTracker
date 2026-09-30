@@ -54,27 +54,25 @@ modules/MMM-ChoreTracker/
 
 ---
 
-## 🚀 Installation
+## 🚀 Installation (Zero Dependencies — No `npm install` Needed!)
 
 1. Navigate to your MagicMirror `modules` directory:
    ```bash
    cd ~/MagicMirror/modules
    git clone https://github.com/your-username/MMM-ChoreTracker.git
-   cd MMM-ChoreTracker
    ```
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+2. **That's it!**
+   There are **no dependencies to install**. You do **not** need to run `npm install`. The module is built purely with native Node.js core modules (`fs`, `path`, `crypto`).
 
 3. Add the module configuration to your `~/MagicMirror/config/config.js` file:
    ```javascript
    {
      module: "MMM-ChoreTracker",
-     position: "top_center", // or "middle_center", "lower_third", "bottom_left"
+     position: "bottom_center", // or "top_center", "lower_third", "bottom_left"
      config: {
-       title: "Family Chore Tracker",
+       showTitleArea: false,       // Ultra-compact mode (ideal for mirrors with large calendars)
+       showParentButton: true,      // Shows the discrete Parent Mode button
        currencySymbol: "$",
        parentPin: "1234",          // 4-digit security PIN for parent panel
        pollInterval: 60000,        // Sync interval in milliseconds
@@ -101,15 +99,15 @@ modules/MMM-ChoreTracker/
 
 ---
 
-## 🛡️ Atomic Write Reliability Guarantee
+## 🛡️ Atomic Write Reliability Guarantee (Zero External Packages)
 
 Raspberry Pis frequently experience power interruptions when unplugged without running `sudo shutdown`. Standard Node.js `fs.writeFileSync` can truncate or zero-out JSON files during mid-write power loss.
 
-**MMM-ChoreTracker** uses `write-file-atomic` with `fsync: true`:
-1. Writes new state to a temporary file in the target directory (`chores_db.json.tmp.*`).
-2. Issues an `fsync` syscall to force the Linux kernel to flush buffers to the physical SD card / NVMe drive.
-3. Atomically renames the temporary file over the target database file using atomic POSIX rename (`fs.rename`).
-4. If a syntax error is ever encountered upon startup, an automatic `.corrupt.<timestamp>` snapshot is archived before loading defaults to ensure zero unrecoverable loss.
+**MMM-ChoreTracker** includes a built-in atomic write engine that uses 100% native Node.js system calls with zero external npm dependencies:
+1. Writes new state to a temporary file in the target directory (`.chores_db.json.tmp.*`).
+2. Issues a native `fs.fsyncSync` syscall to force the Linux kernel to flush disk buffers to the physical SD card or NVMe drive.
+3. Atomically swaps the temporary file over the database file using atomic POSIX rename (`fs.renameSync`).
+4. Automatically snapshots corrupt or unreadable files (`.corrupt.<timestamp>`) before initializing defaults, ensuring zero unrecoverable loss.
 
 ---
 

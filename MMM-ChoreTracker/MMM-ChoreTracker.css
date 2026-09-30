@@ -913,6 +913,70 @@
   box-shadow: 0 0 10px rgba(2, 132, 199, 0.4);
 }
 
+/* Multi-Child Assignment Chips Grid */
+.ct-assign-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ct-assign-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ct-border);
+  color: var(--ct-text-secondary);
+  padding: 10px 14px;
+  border-radius: var(--ct-radius-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.ct-assign-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.ct-assign-chip.selected {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+
+.ct-assign-chip.grabs.selected {
+  background: rgba(168, 85, 247, 0.25);
+  border-color: #c084fc;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.35);
+}
+
+/* Manage Children Tab Cards */
+.ct-manage-child-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-md);
+  padding: 12px 14px;
+  transition: all 0.15s ease;
+}
+
+.ct-manage-child-card.add-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: rgba(56, 189, 248, 0.05);
+  border-color: rgba(56, 189, 248, 0.25);
+  padding: 14px 16px;
+}
+
 .ct-btn-primary {
   background: linear-gradient(135deg, #0284c7, #2563eb);
   color: #fff;

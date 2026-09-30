@@ -354,16 +354,21 @@ export default function App() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [isParentUnlocked, setIsParentUnlocked] = useState(false);
-  const [parentActiveTab, setParentActiveTab] = useState<"approvals" | "create_task" | "payout_engine" | "history">("approvals");
+  const [parentActiveTab, setParentActiveTab] = useState<"approvals" | "create_task" | "children" | "payout_engine" | "history">("approvals");
   const [payoutProfileId, setPayoutProfileId] = useState("child_01");
 
   // In-Module Form State
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState<"routine" | "monetized">("monetized");
   const [newReward, setNewReward] = useState("5.00");
-  const [newAssignedTo, setNewAssignedTo] = useState("up_for_grabs");
+  const [newAssignedTos, setNewAssignedTos] = useState<string[]>(["up_for_grabs"]);
   const [newDays, setNewDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [newNote, setNewNote] = useState("");
+
+  // Child management state
+  const [newChildName, setNewChildName] = useState("");
+  const [editingChildNames, setEditingChildNames] = useState<Record<string, string>>({});
+  const [savedNameNoticeId, setSavedNameNoticeId] = useState<string | null>(null);
 
   // Quick note draft
   const [customNoteText, setCustomNoteText] = useState("");
@@ -577,15 +582,27 @@ export default function App() {
     );
   };
 
-  // Create chore
+  // Create chore (supports assigning to one, multiple, or all children simultaneously!)
   const handleCreateChore = () => {
     if (!newTitle.trim()) return;
-    const newTask: Task = {
-      id: `task_${Date.now()}`,
+
+    const assignees = newAssignedTos.length > 0 ? newAssignedTos : ["up_for_grabs"];
+    const initialNotes = newNote.trim()
+      ? [
+          {
+            author: "Parent",
+            text: newNote.trim(),
+            timestamp: new Date().toISOString()
+          }
+        ]
+      : [];
+
+    const newTasks: Task[] = assignees.map((assigneeId, idx) => ({
+      id: `task_${Date.now()}_${idx}`,
       title: newTitle.trim(),
       category: newCategory,
       reward_amount: newCategory === "routine" ? 0 : parseFloat(newReward) || 0,
-      assigned_to: newAssignedTo,
+      assigned_to: assigneeId,
       recurrence:
         newCategory === "routine"
           ? { frequency: "weekly", days_of_week: newDays }
@@ -594,22 +611,53 @@ export default function App() {
       is_completed_today: false,
       is_completed: false,
       is_approved: false,
-      notes: newNote.trim()
-        ? [
-            {
-              author: "Parent",
-              text: newNote.trim(),
-              timestamp: new Date().toISOString()
-            }
-          ]
-        : []
-    };
+      notes: [...initialNotes]
+    }));
 
-    setTasks((prev) => [newTask, ...prev]);
+    setTasks((prev) => [...newTasks, ...prev]);
     setNewTitle("");
     setNewReward("5.00");
     setNewNote("");
+    setNewAssignedTos(["up_for_grabs"]);
     setParentActiveTab("approvals");
+  };
+
+  // Add a new child profile
+  const handleAddChild = () => {
+    const trimmed = newChildName.trim();
+    if (!trimmed) return;
+    const newProfile: Profile = {
+      id: `child_${Date.now()}`,
+      name: trimmed,
+      pin: null,
+      icon: `assets/icons/${trimmed.toLowerCase().replace(/[^a-z0-9]/g, "")}.png`
+    };
+    setProfiles((prev) => [...prev, newProfile]);
+    setNewChildName("");
+  };
+
+  // Rename an existing child profile
+  const handleRenameChild = (profileId: string) => {
+    const updatedName = editingChildNames[profileId]?.trim();
+    if (!updatedName) return;
+
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === profileId ? { ...p, name: updatedName } : p))
+    );
+
+    setSavedNameNoticeId(profileId);
+    setTimeout(() => {
+      setSavedNameNoticeId(null);
+    }, 2000);
+  };
+
+  // Delete a child profile
+  const handleDeleteChild = (profileId: string) => {
+    if (profiles.length <= 1) return;
+    setProfiles((prev) => prev.filter((p) => p.id !== profileId));
+    setTasks((prev) =>
+      prev.map((t) => (t.assigned_to === profileId ? { ...t, assigned_to: "up_for_grabs" } : t))
+    );
   };
 
   // Process payout
@@ -1174,6 +1222,16 @@ module.exports = NodeHelper.create({ ... });`}
                   Touching any kid's card brings up a dedicated full-screen modal showing their specific assigned routines, bounties, and threaded notes, with an easy (✕) close button to return to the clean dashboard.
                 </p>
               </div>
+
+              <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-2 md:col-span-2">
+                <div className="flex items-center gap-2 text-purple-400 font-bold text-base">
+                  <ShieldCheck className="w-5 h-5" />
+                  Zero-Dependency Bare-Bones Installation (No `npm install` Needed)
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  The module requires <strong>zero external npm packages</strong>. All persistence, atomic disk writes, recurrence evaluation, and UUID generation use Node.js core modules (<code>fs</code>, <code>path</code>, <code>crypto</code>). Simply clone or copy the folder into <code>~/MagicMirror/modules/MMM-ChoreTracker</code> and launch MagicMirror.
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -1699,13 +1757,14 @@ module.exports = NodeHelper.create({ ... });`}
               {[
                 { id: "approvals", label: "Task Approvals" },
                 { id: "create_task", label: "Create Chore" },
+                { id: "children", label: "Manage Children" },
                 { id: "payout_engine", label: "Payout & Audit" },
                 { id: "history", label: "Payout Ledger" }
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setParentActiveTab(tab.id as any)}
-                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap ${
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer ${
                     parentActiveTab === tab.id
                       ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
                       : "text-slate-400 hover:text-white"
@@ -1775,7 +1834,7 @@ module.exports = NodeHelper.create({ ... });`}
               </div>
             )}
 
-            {/* Chore Creation Tab */}
+            {/* Chore Creation Tab with Multi-Child Selection */}
             {parentActiveTab === "create_task" && (
               <div className="max-w-2xl bg-slate-900 border border-white/10 rounded-3xl p-6 sm:p-8 space-y-4">
                 <div>
@@ -1857,29 +1916,183 @@ module.exports = NodeHelper.create({ ... });`}
                   </div>
                 )}
 
+                {/* Multi-Child Assignment Chips */}
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">Assign To</label>
-                  <select
-                    value={newAssignedTo}
-                    onChange={(e) => setNewAssignedTo(e.target.value)}
-                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400"
-                  >
-                    <option value="up_for_grabs">⚡ Up For Grabs (Open Bounty)</option>
-                    {profiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        👤 {p.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-xs font-bold text-slate-300">Assign Chore To</label>
+                    <span className="text-[11px] text-slate-400">Select one or multiple children</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {/* Up For Grabs */}
+                    <button
+                      type="button"
+                      onClick={() => setNewAssignedTos(["up_for_grabs"])}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                        newAssignedTos.includes("up_for_grabs")
+                          ? "bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20"
+                          : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <span>⚡</span> Up For Grabs (Open Bounty)
+                    </button>
+
+                    {/* Each Child Chip */}
+                    {profiles.map((p) => {
+                      const isSel = newAssignedTos.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            let updated = newAssignedTos.filter((x) => x !== "up_for_grabs");
+                            if (updated.includes(p.id)) {
+                              updated = updated.filter((x) => x !== p.id);
+                            } else {
+                              updated.push(p.id);
+                            }
+                            if (updated.length === 0) {
+                              updated = ["up_for_grabs"];
+                            }
+                            setNewAssignedTos(updated);
+                          }}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                            isSel
+                              ? "bg-sky-600/30 border-sky-400 text-sky-200 shadow-md shadow-sky-600/20"
+                              : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <span>{isSel ? "✓" : "+"}</span>
+                          <span>👤 {p.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {profiles.length > 1 && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewAssignedTos(profiles.map((p) => p.id))}
+                        className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 py-1 px-2.5 rounded-lg bg-white/5 border border-white/10 cursor-pointer"
+                      >
+                        👥 Assign to All Children ({profiles.length})
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <button
                   onClick={handleCreateChore}
-                  className="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition active:scale-95"
+                  className="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition active:scale-95 cursor-pointer"
                 >
                   <Plus className="w-5 h-5" />
-                  Publish Chore to Mirror Screen
+                  Publish Chore ({newAssignedTos.includes("up_for_grabs") ? "1 Open Bounty" : `${newAssignedTos.length} Child Chore${newAssignedTos.length > 1 ? "s" : ""}`})
                 </button>
+              </div>
+            )}
+
+            {/* Manage Children Tab */}
+            {parentActiveTab === "children" && (
+              <div className="max-w-2xl space-y-5">
+                {/* Add Child Card */}
+                <div className="bg-slate-900 border border-sky-500/30 rounded-3xl p-5 sm:p-6 space-y-3">
+                  <div className="flex items-center gap-2 text-sky-400 font-bold text-sm">
+                    <Plus className="w-4 h-4" />
+                    Add a New Child to Tracker
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newChildName}
+                      onChange={(e) => setNewChildName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddChild();
+                      }}
+                      placeholder="Enter child's name (e.g. Emma, Lucas, Noah)..."
+                      className="flex-1 bg-slate-950 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddChild}
+                      className="bg-sky-500 hover:bg-sky-400 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm transition flex items-center gap-1.5 shadow-md shadow-sky-500/20 cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Child
+                    </button>
+                  </div>
+                </div>
+
+                {/* Existing Children List */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center px-1">
+                    <h4 className="text-sm font-bold text-white">
+                      Family Children ({profiles.length})
+                    </h4>
+                    <span className="text-xs text-slate-400">Rename or manage profiles</span>
+                  </div>
+
+                  {profiles.map((p, idx) => {
+                    const grad = avatarGradients[idx % avatarGradients.length];
+                    const childChoresCount = tasks.filter((t) => t.assigned_to === p.id).length;
+                    const currentInputVal = editingChildNames[p.id] !== undefined ? editingChildNames[p.id] : p.name;
+                    const isSaved = savedNameNoticeId === p.id;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="p-4 bg-slate-900 border border-white/10 rounded-2xl flex flex-wrap sm:flex-nowrap items-center gap-3 shadow-md"
+                      >
+                        <div
+                          className={`w-9 h-9 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center text-xs font-black text-white shrink-0 shadow-sm`}
+                        >
+                          {p.name.charAt(0)}
+                        </div>
+
+                        <input
+                          type="text"
+                          value={currentInputVal}
+                          onChange={(e) =>
+                            setEditingChildNames((prev) => ({ ...prev, [p.id]: e.target.value }))
+                          }
+                          placeholder="Child name..."
+                          className="flex-1 min-w-[140px] bg-slate-950 border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-sky-400"
+                        />
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[11px] text-slate-400 font-medium px-2 py-1 bg-white/5 rounded-lg border border-white/5">
+                            {childChoresCount} chores
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRenameChild(p.id)}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer border ${
+                              isSaved
+                                ? "bg-emerald-600/30 border-emerald-400 text-emerald-300"
+                                : "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                            }`}
+                          >
+                            {isSaved ? <Check className="w-3.5 h-3.5" /> : null}
+                            {isSaved ? "Saved!" : "Save Name"}
+                          </button>
+
+                          {profiles.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteChild(p.id)}
+                              className="px-3 py-2 rounded-xl text-xs font-bold bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 transition flex items-center gap-1 cursor-pointer"
+                              title="Remove child"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
