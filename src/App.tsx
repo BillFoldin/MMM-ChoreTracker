@@ -1309,12 +1309,16 @@ module.exports = NodeHelper.create({ ... });`}
                   <ArrowLeft className="w-4 h-4" />
                   <span>Back to Dashboard</span>
                 </button>
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xl font-black text-white shadow-lg shadow-sky-500/20">
-                  {selectedChildId === "up_for_grabs" ? "⚡" : activeChild?.name.charAt(0)}
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xl font-black text-white shadow-lg shadow-sky-500/20 shrink-0">
+                  {selectedChildId === "up_for_grabs" ? (
+                    <Sparkles className="w-5 h-5 text-amber-300" />
+                  ) : (
+                    <Users className="w-5 h-5 text-white" />
+                  )}
                 </div>
                 <div>
-                  <h2 className="font-bold text-xl sm:text-2xl text-white tracking-tight">
-                    {selectedChildId === "up_for_grabs" ? "Up For Grabs Bounties" : `${activeChild?.name}'s Chores`}
+                  <h2 className="font-bold text-xl sm:text-2xl text-white tracking-tight flex items-center gap-2">
+                    <span>{selectedChildId === "up_for_grabs" ? "Up For Grabs Bounties" : `${activeChild?.name}'s Chores`}</span>
                   </h2>
                   <p className="text-xs text-slate-400">
                     {selectedChildId === "up_for_grabs"
@@ -1338,7 +1342,7 @@ module.exports = NodeHelper.create({ ... });`}
             </div>
 
             {/* Scrollable Content Body */}
-            <div className="p-4 sm:p-6 md:p-7 flex flex-col gap-5 flex-1 overflow-y-auto">
+            <div className="p-4 sm:p-6 md:p-7 flex flex-col gap-4 flex-1 overflow-y-auto min-h-0 touch-pan-y overscroll-y-contain">
               {/* Navigation Sub-Tabs */}
               {selectedChildId !== "up_for_grabs" && (
                 <div className="flex gap-2 bg-slate-950/80 border border-white/10 p-1.5 rounded-2xl max-w-lg shrink-0">
@@ -1356,19 +1360,20 @@ module.exports = NodeHelper.create({ ... });`}
                   <button
                     type="button"
                     onClick={() => setChildModalTab("up_for_grabs")}
-                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                       childModalTab === "up_for_grabs"
                         ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    ⚡ Available Up For Grabs ({tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length})
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>Available Up For Grabs ({tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length})</span>
                   </button>
                 </div>
               )}
 
               {/* Task Items List */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pb-8">
                 {childTasks.length === 0 ? (
                   <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
                     <div className="text-4xl mb-3">🎉</div>
@@ -1387,41 +1392,42 @@ module.exports = NodeHelper.create({ ... });`}
                           setActiveTaskId(task.id);
                           setActiveModal("task_detail");
                         }}
-                        className={`group cursor-pointer rounded-2xl p-4 sm:p-5 border transition-all flex flex-col justify-between gap-3 select-none ${
+                        className={`group cursor-pointer rounded-2xl p-4 sm:p-4.5 border transition-all flex flex-col justify-between gap-3 select-none touch-pan-y ${
                           isDone
                             ? "bg-emerald-950/20 border-emerald-500/40 opacity-80"
                             : "bg-slate-900 border-white/10 hover:border-sky-400 hover:bg-slate-850 shadow-lg"
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <h4
-                              className={`font-bold text-base leading-snug text-white mb-2 ${
-                                isDone ? "line-through text-slate-400" : ""
-                              }`}
-                            >
-                              {task.title}
-                            </h4>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            {/* Title line with inline type of task & bounty badges */}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4
+                                className={`font-bold text-base leading-snug text-white ${
+                                  isDone ? "line-through text-slate-400" : ""
+                                }`}
+                              >
+                                {task.title}
+                              </h4>
 
-                            <div className="flex flex-wrap items-center gap-1.5">
                               {isRoutine ? (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider">
-                                  Routine Expectation
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider shrink-0">
+                                  Routine
                                 </span>
                               ) : (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 shrink-0 font-mono">
                                   ${task.reward_amount.toFixed(2)} Bounty
                                 </span>
                               )}
 
                               {!isRoutine && task.is_completed && (
                                 task.is_approved ? (
-                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500 text-emerald-400">
-                                    ✓ Approved for Payout
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500 text-emerald-400 shrink-0">
+                                    ✓ Approved
                                   </span>
                                 ) : (
-                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500 text-amber-400">
-                                    ⏳ Needs Parent Approval
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500 text-amber-400 shrink-0">
+                                    ⏳ Needs Approval
                                   </span>
                                 )
                               )}
@@ -1447,9 +1453,9 @@ module.exports = NodeHelper.create({ ... });`}
                         </div>
 
                         <div className="flex items-center justify-between text-xs text-slate-400 pt-2.5 border-t border-white/5">
-                          <span className="flex items-center gap-1.5 font-medium">
-                            <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-                            {task.notes.length} {task.notes.length === 1 ? "note" : "notes"}
+                          <span className="flex items-center gap-1.5 font-medium text-sky-300">
+                            <MessageSquare className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                            <span>{task.notes.length} {task.notes.length === 1 ? "note" : "notes"}</span>
                           </span>
                           <span className="text-sky-400 font-semibold group-hover:translate-x-0.5 transition flex items-center gap-1">
                             Details &amp; Notes →

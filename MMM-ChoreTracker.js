@@ -988,13 +988,18 @@ Module.register("MMM-ChoreTracker", {
     const titleGroup = document.createElement("div");
     titleGroup.className = "ct-modal-title";
 
-    const initial = isUpForGrabsView ? "⚡" : (childName || "C").charAt(0).toUpperCase();
+    const userSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+    const boltSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+    const childIconSvg = isUpForGrabsView ? boltSvg : userSvg;
+
     titleGroup.innerHTML = `
-      <div class="ct-avatar-circle" style="background:${isUpForGrabsView ? "#8b5cf6" : "#3b82f6"}; width:38px; height:38px; font-size:16px;">
-        ${initial}
+      <div class="ct-avatar-badge" style="background:${isUpForGrabsView ? "linear-gradient(135deg, #7c3aed, #9333ea)" : "linear-gradient(135deg, #0284c7, #2563eb)"}; width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(0,0,0,0.4); flex-shrink:0;">
+        ${childIconSvg}
       </div>
       <div>
-        <div style="font-size:19px; line-height:1.2; font-weight:700;">${childName}'s Chores</div>
+        <div style="font-size:20px; line-height:1.2; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
+          <span>${childName}'s Chores</span>
+        </div>
         <div style="font-size:12px; font-weight:500; color:#94a3b8;">${isUpForGrabsView ? "Open bounties for anyone in the family" : "Tap checkmark to complete • Tap chore for notes"}</div>
       </div>
     `;
@@ -1043,7 +1048,8 @@ Module.register("MMM-ChoreTracker", {
       grabsBtn.style.padding = "8px 14px";
       grabsBtn.style.minHeight = "40px";
       grabsBtn.style.fontSize = "13px";
-      grabsBtn.innerText = `⚡ Up For Grabs (${openBountiesCount})`;
+      const tabBoltSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+      grabsBtn.innerHTML = `${tabBoltSvg}<span>Up For Grabs (${openBountiesCount})</span>`;
       grabsBtn.addEventListener("click", function () {
         self.childModalTab = "up_for_grabs";
         self.updateDom(100);
@@ -1088,40 +1094,40 @@ Module.register("MMM-ChoreTracker", {
         const titleGroup = document.createElement("div");
         titleGroup.className = "ct-card-title-group";
 
+        // Title Row: Title + Task Type & Bounty Badge moved onto the SAME title line
+        const titleRow = document.createElement("div");
+        titleRow.className = "ct-card-title-row";
+
         const title = document.createElement("h3");
         title.className = "ct-card-title";
         title.innerText = task.title;
-        titleGroup.appendChild(title);
+        titleRow.appendChild(title);
 
-        // Badges row
-        const badgesRow = document.createElement("div");
-        badgesRow.className = "ct-badges-row";
-
-        // Category badge
+        // Category & Bounty Badge (Inline with chore title)
         const catBadge = document.createElement("span");
         if (isRoutine) {
           catBadge.className = "ct-badge ct-badge-routine";
-          catBadge.innerText = "Routine Expectation";
+          catBadge.innerText = "Routine";
         } else {
           catBadge.className = "ct-badge ct-badge-monetized";
           catBadge.innerText = `${self.config.currencySymbol}${(parseFloat(task.reward_amount) || 0).toFixed(2)} Bounty`;
         }
-        badgesRow.appendChild(catBadge);
+        titleRow.appendChild(catBadge);
 
-        // Monetized approval status badge
+        // Monetized approval status badge (Inline on title line)
         if (!isRoutine && task.is_completed) {
           const statusBadge = document.createElement("span");
           if (task.is_approved) {
             statusBadge.className = "ct-badge ct-badge-approved";
-            statusBadge.innerText = "✓ Approved for Payout";
+            statusBadge.innerText = "✓ Approved";
           } else {
             statusBadge.className = "ct-badge ct-badge-approval";
-            statusBadge.innerText = "⏳ Needs Parent Approval";
+            statusBadge.innerText = "⏳ Needs Approval";
           }
-          badgesRow.appendChild(statusBadge);
+          titleRow.appendChild(statusBadge);
         }
 
-        titleGroup.appendChild(badgesRow);
+        titleGroup.appendChild(titleRow);
         cardTop.appendChild(titleGroup);
 
         // Complete check button
@@ -1153,7 +1159,8 @@ Module.register("MMM-ChoreTracker", {
         const notesCount = (task.notes || []).length;
         const notesIndicator = document.createElement("div");
         notesIndicator.className = "ct-card-notes-count";
-        notesIndicator.innerHTML = `💬 ${notesCount} ${notesCount === 1 ? "Note" : "Notes"}`;
+        const noteSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+        notesIndicator.innerHTML = `${noteSvg}<span>${notesCount} ${notesCount === 1 ? "Note" : "Notes"}</span>`;
         cardBottom.appendChild(notesIndicator);
 
         // Claim button if up_for_grabs and viewed by a specific child
@@ -1162,7 +1169,8 @@ Module.register("MMM-ChoreTracker", {
           claimBtn.className = "ct-badge ct-badge-grabs";
           claimBtn.style.cursor = "pointer";
           claimBtn.style.padding = "4px 10px";
-          claimBtn.innerText = `⚡ Claim for ${childName}`;
+          const grabBoltSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="vertical-align:middle; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+          claimBtn.innerHTML = `${grabBoltSvg} Claim for ${childName}`;
           claimBtn.addEventListener("click", function (e) {
             e.stopPropagation();
             self.sendSocketNotification("CLAIM_TASK", {
@@ -1180,8 +1188,31 @@ Module.register("MMM-ChoreTracker", {
 
         card.appendChild(cardBottom);
 
-        // Clicking card body opens the full detail/notes modal
+        // Touch-scroll protection so dragging down on a touch screen does not trigger opening the card!
+        let touchStartY = 0;
+        let isTouchDragging = false;
+
+        card.addEventListener("touchstart", function (e) {
+          if (e.touches && e.touches.length > 0) {
+            touchStartY = e.touches[0].clientY;
+            isTouchDragging = false;
+          }
+        }, { passive: true });
+
+        card.addEventListener("touchmove", function (e) {
+          if (e.touches && e.touches.length > 0) {
+            if (Math.abs(e.touches[0].clientY - touchStartY) > 8) {
+              isTouchDragging = true;
+            }
+          }
+        }, { passive: true });
+
+        // Clicking card body opens the full detail/notes modal (if not dragging/scrolling)
         card.addEventListener("click", function () {
+          if (isTouchDragging) {
+            isTouchDragging = false;
+            return;
+          }
           self.activeTaskId = task.id;
           self.activeModal = "task_detail";
           self.updateDom(200);

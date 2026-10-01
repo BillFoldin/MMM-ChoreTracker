@@ -371,8 +371,10 @@
 .ct-tasks-grid {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 6px;
+  gap: 10px;
+  margin-top: 4px;
+  touch-action: pan-y !important;
+  padding-bottom: 24px;
 }
 
 .ct-empty-state {
@@ -390,24 +392,27 @@
   background: var(--ct-bg-card);
   border: 1px solid var(--ct-border);
   border-radius: var(--ct-radius-md);
-  padding: 16px;
+  padding: 13px 16px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 12px;
+  gap: 9px;
   cursor: pointer;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  touch-action: pan-y !important;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ct-task-card:hover {
   background: var(--ct-bg-card-hover);
   border-color: rgba(255, 255, 255, 0.25);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .ct-task-card:active {
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 
 .ct-task-card.completed .ct-card-title {
@@ -422,21 +427,31 @@
 
 .ct-card-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
 .ct-card-title-group {
   flex: 1;
+  min-width: 0;
+}
+
+.ct-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0;
 }
 
 .ct-card-title {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   line-height: 1.3;
-  margin: 0 0 6px 0;
+  margin: 0;
   color: var(--ct-text-primary);
+  word-break: break-word;
 }
 
 .ct-badges-row {
@@ -450,9 +465,13 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
-  text-transform: uppercase;
-  padding: 3px 8px;
+  padding: 2.5px 8px;
   border-radius: var(--ct-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -661,16 +680,42 @@
 }
 
 .ct-modal-body {
-  padding: 24px 28px;
-  overflow-y: auto;
-  flex: 1;
+  padding: 20px 24px;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   max-width: 1000px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+}
+
+.ct-modal-body::-webkit-scrollbar {
+  width: 10px !important;
+  display: block !important;
+}
+
+.ct-modal-body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-radius: 8px !important;
+  margin: 8px 0 !important;
+}
+
+.ct-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.45) !important;
+  border-radius: 8px !important;
+  border: 2px solid rgba(9, 13, 22, 0.8) !important;
+}
+
+.ct-modal-body::-webkit-scrollbar-thumb:hover,
+.ct-modal-body::-webkit-scrollbar-thumb:active {
+  background: rgba(56, 189, 248, 0.8) !important;
 }
 
 /* =========================================================================
