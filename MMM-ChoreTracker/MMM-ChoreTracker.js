@@ -89,6 +89,9 @@ Module.register("MMM-ChoreTracker", {
     Log.info(`[${this.name}] Starting module...`);
     this.serverDate = new Date().toISOString().split("T")[0];
 
+    // Initialize global on-screen virtual keyboard listener for any touch screen inputs
+    this.initGlobalVirtualKeyboardListener();
+
     // Transmit config to backend helper and request initial database load
     this.sendSocketNotification("CONFIG", this.config);
     this.sendSocketNotification("GET_INITIAL_DATA");
@@ -195,12 +198,55 @@ Module.register("MMM-ChoreTracker", {
    * Enables 100% touch typing on Raspberry Pi smart mirrors without requiring
    * a hardwired physical keyboard.
    */
+  initGlobalVirtualKeyboardListener: function () {
+    if (this._vkGlobalInit) return;
+    this._vkGlobalInit = true;
+    const self = this;
+
+    const isTargetInput = function (el) {
+      if (!el) return false;
+      const tag = el.tagName ? el.tagName.toLowerCase() : "";
+      return tag === "input" || tag === "textarea";
+    };
+
+    const handleGlobalTrigger = function (e) {
+      const target = e.target;
+      if (!isTargetInput(target)) return;
+      if (target.getAttribute("data-no-vk") === "true") return;
+
+      // Don't re-open if already typing in this target
+      if (self.virtualKeyboard && self.virtualKeyboard.isOpen && self.virtualKeyboard.targetInput === target) {
+        return;
+      }
+
+      const title = target.getAttribute("data-vk-title") || target.placeholder || "Enter text";
+      const type = target.getAttribute("data-vk-type") || (target.type === "number" ? "number" : "text");
+
+      self.openVirtualKeyboard({
+        targetInput: target,
+        title: title,
+        type: type,
+        value: target.value || ""
+      });
+    };
+
+    // Global listener on focusin and pointerdown ensures ANY touched field opens the keyboard
+    document.addEventListener("focusin", handleGlobalTrigger);
+    document.addEventListener("pointerdown", function (e) {
+      if (isTargetInput(e.target)) {
+        handleGlobalTrigger(e);
+      }
+    });
+  },
+
   attachVirtualKeyboard: function (element, title, type = "text", onChange = null, onConfirm = null) {
     if (!element) return;
     const self = this;
-    element.style.cursor = "pointer";
-    element.addEventListener("click", function (e) {
-      e.stopPropagation();
+
+    const openHandler = function (e) {
+      if (e) {
+        e.stopPropagation();
+      }
       self.openVirtualKeyboard({
         targetInput: element,
         title: title || element.placeholder || "Enter text",
@@ -209,6 +255,19 @@ Module.register("MMM-ChoreTracker", {
         onChange: onChange,
         onConfirm: onConfirm
       });
+    };
+
+    element.style.cursor = "pointer";
+    element.setAttribute("data-vk-attached", "true");
+    if (title) element.setAttribute("data-vk-title", title);
+    if (type) element.setAttribute("data-vk-type", type);
+
+    // Multi-event binding for maximum Raspberry Pi touch screen compatibility
+    element.addEventListener("pointerdown", openHandler);
+    element.addEventListener("click", openHandler);
+    element.addEventListener("focus", openHandler);
+    element.addEventListener("touchend", function (e) {
+      openHandler(e);
     });
   },
 
@@ -246,13 +305,58 @@ Module.register("MMM-ChoreTracker", {
       document.body.appendChild(container);
     } else {
       container.innerHTML = "";
+      // Ensure it is ALWAYS the last child of document.body so it is physically in front of all modals
+      document.body.appendChild(container);
     }
+
+    // Explicit inline styles guaranteeing top-level visibility regardless of parent or modal CSS
+    container.style.position = "fixed";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.right = "0";
+    container.style.bottom = "0";
+    container.style.width = "100vw";
+    container.style.height = "100vh";
+    container.style.zIndex = "2147483647"; // Max 32-bit integer z-index
+    container.style.background = "rgba(0, 0, 0, 0.65)";
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.justifyContent = "flex-end";
+    container.style.pointerEvents = "auto";
+    container.style.touchAction = "manipulation";
 
     const kb = document.createElement("div");
     kb.className = "ct-virtual-keyboard";
+    kb.style.position = "relative";
+    kb.style.zIndex = "2147483647";
+    kb.style.pointerEvents = "auto";
+    kb.style.touchAction = "manipulation";
     kb.addEventListener("click", function (e) {
       e.stopPropagation();
     });
+    kb.addEventListener("pointerdown", function (e) {
+      e.stopPropagation();
+    });
+
+    // Fast-touch key event binder for Raspberry Pi touchscreens
+    const bindKeyAction = function (btn, action) {
+      let handledPointer = false;
+      btn.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        handledPointer = true;
+        action();
+      });
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (handledPointer) {
+          handledPointer = false;
+          return;
+        }
+        action();
+      });
+    };
 
     // Top Bar with label and close button
     const topBar = document.createElement("div");
@@ -267,8 +371,7 @@ Module.register("MMM-ChoreTracker", {
     closeBtn.type = "button";
     closeBtn.className = "ct-vk-close-btn";
     closeBtn.innerText = "✕ Close";
-    closeBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
+    bindKeyAction(closeBtn, function () {
       self.closeVirtualKeyboard();
     });
     topBar.appendChild(closeBtn);
@@ -291,8 +394,7 @@ Module.register("MMM-ChoreTracker", {
     clearBtn.type = "button";
     clearBtn.className = "ct-vk-clear-btn";
     clearBtn.innerText = "⌫ Clear";
-    clearBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
+    bindKeyAction(clearBtn, function () {
       self.virtualKeyboard.value = "";
       self.syncVirtualKeyboardValue();
     });
@@ -329,8 +431,7 @@ Module.register("MMM-ChoreTracker", {
           }
 
           btn.innerText = key;
-          btn.addEventListener("click", function (e) {
-            e.stopPropagation();
+          bindKeyAction(btn, function () {
             if (key === "✓ Done") {
               self.commitVirtualKeyboard();
             } else if (key === "⌫ Del") {
@@ -358,8 +459,7 @@ Module.register("MMM-ChoreTracker", {
       switchBtn.type = "button";
       switchBtn.className = "ct-vk-key key-switch";
       switchBtn.innerText = "⌨ Switch to Full ABC Keyboard";
-      switchBtn.addEventListener("click", function (e) {
-        e.stopPropagation();
+      bindKeyAction(switchBtn, function () {
         self.virtualKeyboard.mode = "alpha";
         self.renderVirtualKeyboard();
       });
@@ -395,8 +495,7 @@ Module.register("MMM-ChoreTracker", {
           }
 
           btn.innerText = key;
-          btn.addEventListener("click", function (e) {
-            e.stopPropagation();
+          bindKeyAction(btn, function () {
             if (key === "✓ Done") {
               self.commitVirtualKeyboard();
             } else if (key === "⌫ Del") {
@@ -456,8 +555,7 @@ Module.register("MMM-ChoreTracker", {
           }
 
           btn.innerText = displayKey;
-          btn.addEventListener("click", function (e) {
-            e.stopPropagation();
+          bindKeyAction(btn, function () {
             if (key === "✓ Done") {
               self.commitVirtualKeyboard();
             } else if (key === "⌫ Del") {
