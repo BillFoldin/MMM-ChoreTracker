@@ -45,13 +45,17 @@ Module.register("MMM-ChoreTracker", {
   isParentUnlocked: false,
   pinInput: "",
   pinError: "",
-  parentActiveTab: "approvals", // 'approvals' | 'create_task' | 'payout_engine' | 'history'
+  parentActiveTab: "approvals", // 'approvals' | 'manage_chores' | 'create_task' | 'children' | 'payout_engine' | 'history'
+  manageChoresFilter: "all", // "all" | "routine" | "monetized"
+  editingTaskId: null,
+  editingTaskDraft: null,
   serverDate: "",
 
   // In-module task creation draft
   newTaskDraft: {
     title: "",
-    category: "monetized",
+    category: "routine",
+    frequency: "weekly", // "weekly" | "monthly" | "twice_a_year" | "yearly"
     reward_amount: "5.00",
     assigned_to: ["up_for_grabs"], // Array of selected child IDs or ['up_for_grabs']
     days_of_week: [0, 1, 2, 3, 4, 5, 6],
@@ -702,11 +706,14 @@ Module.register("MMM-ChoreTracker", {
       const compactBar = document.createElement("div");
       compactBar.className = "ct-compact-bar";
 
+      const unlockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>`;
+      const lockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+
       const parentBtn = document.createElement("button");
       parentBtn.className = `ct-btn-parent compact ${this.isParentUnlocked ? "unlocked" : ""}`;
       parentBtn.innerHTML = this.isParentUnlocked
-        ? `<span>🔓</span> Parent Mode`
-        : `<span>🔒</span> Parent Mode`;
+        ? `${unlockSvg}<span>Parent Mode</span>`
+        : `${lockSvg}<span>Parent Mode</span>`;
 
       parentBtn.addEventListener("click", function () {
         if (self.isParentUnlocked) {
@@ -733,7 +740,7 @@ Module.register("MMM-ChoreTracker", {
 
     const iconBox = document.createElement("div");
     iconBox.className = "ct-module-icon";
-    iconBox.innerText = "✨";
+    iconBox.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"></path></svg>`;
     left.appendChild(iconBox);
 
     const titleGroup = document.createElement("div");
@@ -770,7 +777,8 @@ Module.register("MMM-ChoreTracker", {
     ).length;
     const routineStat = document.createElement("div");
     routineStat.className = "ct-stat-pill sky";
-    routineStat.innerText = `✓ ${completedCount}/${this.tasks.length} Done`;
+    const checkStatSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    routineStat.innerHTML = `${checkStatSvg}<span>${completedCount}/${this.tasks.length} Done</span>`;
     statsPills.appendChild(routineStat);
 
     // Available Bounty sum ($)
@@ -780,16 +788,19 @@ Module.register("MMM-ChoreTracker", {
 
     const bountyStat = document.createElement("div");
     bountyStat.className = "ct-stat-pill emerald";
-    bountyStat.innerText = `⚡ ${this.config.currencySymbol}${availableBounty.toFixed(2)} Open`;
+    const boltStatSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+    bountyStat.innerHTML = `${boltStatSvg}<span>${this.config.currencySymbol}${availableBounty.toFixed(2)} Open</span>`;
     statsPills.appendChild(bountyStat);
     right.appendChild(statsPills);
 
     // Parent Mode lock button
     const parentBtn = document.createElement("button");
     parentBtn.className = `ct-btn-parent ${this.isParentUnlocked ? "unlocked" : ""}`;
+    const headerUnlockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>`;
+    const headerLockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
     parentBtn.innerHTML = this.isParentUnlocked
-      ? `<span>🔓</span> Parent Mode`
-      : `<span>🔒</span> Parent Lock`;
+      ? `${headerUnlockSvg}<span>Parent Mode</span>`
+      : `${headerLockSvg}<span>Parent Lock</span>`;
 
     parentBtn.addEventListener("click", function () {
       if (self.isParentUnlocked) {
@@ -878,7 +889,8 @@ Module.register("MMM-ChoreTracker", {
       if (totalCount === 0) {
         status.innerText = "No chores";
       } else if (pendingCount === 0) {
-        status.innerHTML = `<span style="color:#10b981;">🎉 All ${totalCount} Done!</span>`;
+        const checkStarSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#10b981" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        status.innerHTML = `<span style="color:#10b981;">${checkStarSvg}All ${totalCount} Done!</span>`;
       } else {
         status.innerHTML = `<span style="color:#38bdf8;">${doneCount}/${totalCount} Done</span> • <strong style="color:#f59e0b;">${pendingCount} Due</strong>`;
       }
@@ -919,7 +931,8 @@ Module.register("MMM-ChoreTracker", {
     const grabsAvatar = document.createElement("div");
     grabsAvatar.className = "ct-kid-avatar";
     grabsAvatar.style.background = "linear-gradient(135deg, #8b5cf6, #6d28d9)";
-    grabsAvatar.innerText = "⚡ Bounties";
+    const grabsAvatarBoltSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+    grabsAvatar.innerHTML = `${grabsAvatarBoltSvg}<span>Bounties</span>`;
     grabsCard.appendChild(grabsAvatar);
 
     const grabsStatus = document.createElement("div");
@@ -1074,8 +1087,9 @@ Module.register("MMM-ChoreTracker", {
     if (targetTasks.length === 0) {
       const empty = document.createElement("div");
       empty.className = "ct-empty-state";
+      const emptySparkleSvg = `<svg width="28" height="28" viewBox="0 0 24 24" fill="#10b981" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
       empty.innerHTML = `
-        <p style="font-size: 28px; margin: 0 0 10px 0;">🎉</p>
+        <div style="width:52px; height:52px; border-radius:50%; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); display:flex; align-items:center; justify-content:center; margin:0 auto 10px auto;">${emptySparkleSvg}</div>
         <p>No chores pending here! Great job!</p>
       `;
       tasksList.appendChild(empty);
@@ -1119,10 +1133,12 @@ Module.register("MMM-ChoreTracker", {
           const statusBadge = document.createElement("span");
           if (task.is_approved) {
             statusBadge.className = "ct-badge ct-badge-approved";
-            statusBadge.innerText = "✓ Approved";
+            const checkMiniSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            statusBadge.innerHTML = `${checkMiniSvg}<span>Approved</span>`;
           } else {
             statusBadge.className = "ct-badge ct-badge-approval";
-            statusBadge.innerText = "⏳ Needs Approval";
+            const clockMiniSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+            statusBadge.innerHTML = `${clockMiniSvg}<span>Needs Approval</span>`;
           }
           titleRow.appendChild(statusBadge);
         }
@@ -1134,7 +1150,8 @@ Module.register("MMM-ChoreTracker", {
         const checkBtn = document.createElement("button");
         checkBtn.className = "ct-btn-card-check";
         checkBtn.setAttribute("aria-label", "Toggle Complete");
-        checkBtn.innerHTML = isDone ? "✓" : "";
+        const checkBtnSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        checkBtn.innerHTML = isDone ? checkBtnSvg : "";
         checkBtn.addEventListener("click", function (e) {
           e.stopPropagation();
           // If task is up_for_grabs or unassigned, and not yet completed, prompt who did it!
@@ -1319,7 +1336,7 @@ Module.register("MMM-ChoreTracker", {
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="color:#94a3b8; font-size:14px;">Assigned To:</span>
-        <strong style="color:#fff;">${task.assigned_to === "up_for_grabs" ? "⚡ Up For Grabs" : assignedProfile ? assignedProfile.name : "Assigned"}</strong>
+        <strong style="color:#fff; display:inline-flex; align-items:center; gap:4px;">${task.assigned_to === "up_for_grabs" ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span>Up For Grabs</span>` : assignedProfile ? assignedProfile.name : "Assigned"}</strong>
       </div>
     `;
 
@@ -1350,7 +1367,8 @@ Module.register("MMM-ChoreTracker", {
       const claimBtn = document.createElement("button");
       claimBtn.className = "ct-btn-primary";
       claimBtn.style.flex = "1";
-      claimBtn.innerText = `⚡ Claim Chore for ${currentChild ? currentChild.name : "Me"}`;
+      const claimBoltSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:5px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+      claimBtn.innerHTML = `${claimBoltSvg}<span>Claim Chore for ${currentChild ? currentChild.name : "Me"}</span>`;
       claimBtn.addEventListener("click", function () {
         self.sendSocketNotification("CLAIM_TASK", {
           taskId: task.id,
@@ -1365,7 +1383,9 @@ Module.register("MMM-ChoreTracker", {
     const completeBtn = document.createElement("button");
     completeBtn.className = isDone ? "ct-btn-secondary" : "ct-btn-success";
     completeBtn.style.flex = "1";
-    completeBtn.innerText = isDone ? "↩ Mark as Incomplete" : "✓ Mark as Completed";
+    const undoSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>`;
+    const checkCompleteSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    completeBtn.innerHTML = isDone ? `${undoSvg}<span>Mark as Incomplete</span>` : `${checkCompleteSvg}<span>Mark as Completed</span>`;
     completeBtn.addEventListener("click", function () {
       if ((task.assigned_to === "up_for_grabs" || self.selectedProfileId === "up_for_grabs" || !task.assigned_to) && !isDone) {
         self.completingTaskId = task.id;
@@ -1417,9 +1437,13 @@ Module.register("MMM-ChoreTracker", {
           ? new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
           : "";
 
+        const parentIconSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
+        const childIconSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+        const authorSvg = isParent ? parentIconSvg : childIconSvg;
+
         bubble.innerHTML = `
           <div class="ct-note-meta">
-            <span class="ct-note-author">${n.author || "Family"}</span>
+            <span class="ct-note-author" style="display:inline-flex; align-items:center;">${authorSvg}${n.author || "Family"}</span>
             <span>${timeStr}</span>
           </div>
           <p class="ct-note-text">${n.text || ""}</p>
@@ -1554,7 +1578,8 @@ Module.register("MMM-ChoreTracker", {
 
     const title = document.createElement("h3");
     title.className = "ct-modal-title";
-    title.innerText = "⭐ Who completed this chore?";
+    const starSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:6px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+    title.innerHTML = `${starSvg}<span>Who completed this chore?</span>`;
     headerLeft.appendChild(title);
     header.appendChild(headerLeft);
 
@@ -1676,7 +1701,8 @@ Module.register("MMM-ChoreTracker", {
 
     const title = document.createElement("h3");
     title.className = "ct-modal-title";
-    title.innerText = "🔒 Parent Access";
+    const lockPinSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+    title.innerHTML = `${lockPinSvg}<span>Parent Access</span>`;
     header.appendChild(title);
 
     const closeBtn = document.createElement("button");
@@ -1734,19 +1760,23 @@ Module.register("MMM-ChoreTracker", {
     const keypad = document.createElement("div");
     keypad.className = "ct-numpad-grid";
 
-    const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0", "⌫"];
+    const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0", "DEL"];
 
     keys.forEach((key) => {
       const btn = document.createElement("button");
-      btn.className = `ct-num-key ${key === "Clear" || key === "⌫" ? "action-key" : ""}`;
-      btn.innerText = key;
+      btn.className = `ct-num-key ${key === "Clear" || key === "DEL" ? "action-key" : ""}`;
+      if (key === "DEL") {
+        btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="18" y1="9" x2="12" y2="15"></line><line x1="12" y1="9" x2="18" y2="15"></line></svg>`;
+      } else {
+        btn.innerText = key;
+      }
 
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         self.pinError = "";
         if (key === "Clear") {
           self.pinInput = "";
-        } else if (key === "⌫") {
+        } else if (key === "DEL") {
           self.pinInput = self.pinInput.slice(0, -1);
         } else if (self.pinInput.length < 4) {
           self.pinInput += key;
@@ -1796,13 +1826,15 @@ Module.register("MMM-ChoreTracker", {
 
     const title = document.createElement("h3");
     title.className = "ct-modal-title";
-    title.innerText = "👑 Parent Administration Console";
+    const parentShieldSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:8px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
+    title.innerHTML = `${parentShieldSvg}<span>Parent Administration Console</span>`;
     header.appendChild(title);
 
     // Lock button
     const lockBtn = document.createElement("button");
     lockBtn.className = "ct-btn-close-modal";
-    lockBtn.innerText = "🔒 Lock & Exit";
+    const lockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+    lockBtn.innerHTML = `${lockSvg}<span>Lock &amp; Exit</span>`;
     lockBtn.addEventListener("click", function () {
       self.isParentUnlocked = false;
       self.closeModal();
@@ -1819,17 +1851,37 @@ Module.register("MMM-ChoreTracker", {
     tabsBar.className = "ct-admin-tabs";
 
     const tabDefinitions = [
-      { id: "approvals", label: "Task Approvals" },
-      { id: "create_task", label: "Create Chore" },
-      { id: "children", label: "Children" },
-      { id: "payout_engine", label: "Payout & Audit" },
-      { id: "history", label: "Payout Log" }
+      {
+        id: "approvals",
+        label: "Approvals",
+        iconSvg: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>`
+      },
+      {
+        id: "manage_chores",
+        label: "Manage Chores",
+        iconSvg: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`
+      },
+      {
+        id: "children",
+        label: "Children",
+        iconSvg: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`
+      },
+      {
+        id: "payout_engine",
+        label: "Payout & Audit",
+        iconSvg: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`
+      },
+      {
+        id: "history",
+        label: "Payout Log",
+        iconSvg: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`
+      }
     ];
 
     tabDefinitions.forEach((tab) => {
       const tBtn = document.createElement("button");
       tBtn.className = `ct-tab-btn ${self.parentActiveTab === tab.id ? "active" : ""}`;
-      tBtn.innerText = tab.label;
+      tBtn.innerHTML = `${tab.iconSvg}<span>${tab.label}</span>`;
       tBtn.addEventListener("click", function () {
         self.parentActiveTab = tab.id;
         self.updateDom(100);
@@ -1841,8 +1893,8 @@ Module.register("MMM-ChoreTracker", {
     // Tab Contents
     if (this.parentActiveTab === "approvals") {
       body.appendChild(this.buildApprovalsTab());
-    } else if (this.parentActiveTab === "create_task") {
-      body.appendChild(this.buildCreateTaskTab());
+    } else if (this.parentActiveTab === "manage_chores" || this.parentActiveTab === "create_task") {
+      body.appendChild(this.buildManageChoresTab());
     } else if (this.parentActiveTab === "children") {
       body.appendChild(this.buildChildrenTab());
     } else if (this.parentActiveTab === "payout_engine") {
@@ -1872,9 +1924,11 @@ Module.register("MMM-ChoreTracker", {
     if (pendingTasks.length === 0) {
       const empty = document.createElement("div");
       empty.className = "ct-empty-state";
+      const sparklesSvg = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block; margin:0 auto 10px auto;"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"></path></svg>`;
       empty.innerHTML = `
-        <p style="font-size: 26px; margin: 0 0 6px 0;">✨</p>
-        <p>No monetized chores waiting for approval right now!</p>
+        ${sparklesSvg}
+        <p style="margin:0; font-size:15px; font-weight:600; color:#fff;">All caught up!</p>
+        <p style="margin:4px 0 0 0; font-size:13px; color:#94a3b8;">No monetized chores waiting for approval right now.</p>
       `;
       container.appendChild(empty);
       return container;
@@ -1897,10 +1951,12 @@ Module.register("MMM-ChoreTracker", {
       topRow.style.justifyContent = "space-between";
       topRow.style.alignItems = "center";
 
+      const userSmallSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+
       topRow.innerHTML = `
         <div>
           <h4 style="margin:0 0 4px 0; font-size:17px; color:#fff;">${task.title}</h4>
-          <span style="font-size:13px; color:#94a3b8;">Completed by: <strong style="color:#38bdf8;">${assignedChild ? assignedChild.name : "Unassigned"}</strong></span>
+          <span style="font-size:13px; color:#94a3b8; display:inline-flex; align-items:center;">Completed by: <strong style="color:#38bdf8; margin-left:4px; display:inline-flex; align-items:center;">${userSmallSvg}${assignedChild ? assignedChild.name : "Unassigned"}</strong></span>
         </div>
         <div style="font-size:22px; font-weight:800; color:#10b981;">
           ${self.config.currencySymbol}${(parseFloat(task.reward_amount) || 0).toFixed(2)}
@@ -1917,7 +1973,8 @@ Module.register("MMM-ChoreTracker", {
         noteBox.style.background = "rgba(0,0,0,0.3)";
         noteBox.style.borderRadius = "var(--ct-radius-sm)";
         noteBox.style.color = "#cbd5e1";
-        noteBox.innerHTML = `<strong>${lastNote.author}:</strong> "${lastNote.text}"`;
+        const noteIconInline = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+        noteBox.innerHTML = `${noteIconInline}<strong>${lastNote.author}:</strong> "${lastNote.text}"`;
         item.appendChild(noteBox);
       }
 
@@ -1929,7 +1986,8 @@ Module.register("MMM-ChoreTracker", {
       const approveBtn = document.createElement("button");
       approveBtn.className = "ct-btn-success";
       approveBtn.style.flex = "1";
-      approveBtn.innerText = `✓ Approve & Queue for Payout (${self.config.currencySymbol}${(parseFloat(task.reward_amount) || 0).toFixed(2)})`;
+      const checkApproveSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+      approveBtn.innerHTML = `${checkApproveSvg}<span>Approve &amp; Queue for Payout (${self.config.currencySymbol}${(parseFloat(task.reward_amount) || 0).toFixed(2)})</span>`;
       approveBtn.addEventListener("click", function () {
         self.sendSocketNotification("APPROVE_TASK", {
           taskId: task.id,
@@ -1941,7 +1999,8 @@ Module.register("MMM-ChoreTracker", {
 
       const revisionBtn = document.createElement("button");
       revisionBtn.className = "ct-btn-secondary";
-      revisionBtn.innerText = "↩ Needs Revision";
+      const undoSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>`;
+      revisionBtn.innerHTML = `${undoSvg}<span>Needs Revision</span>`;
       revisionBtn.addEventListener("click", function () {
         self.sendSocketNotification("APPROVE_TASK", {
           taskId: task.id,
@@ -1962,7 +2021,528 @@ Module.register("MMM-ChoreTracker", {
   },
 
   /**
-   * Chore Creation Form Tab
+   * Manage Chores Tab:
+   * Allows parents to view all routine chores & bounties, edit titles,
+   * frequencies, schedules (weekly, monthly, twice a year, yearly), or remove them.
+   */
+  buildManageChoresTab: function () {
+    const self = this;
+    const container = document.createElement("div");
+    container.className = "ct-manage-chores-container";
+
+    // Header with filter pills and "+ New Chore" action
+    const header = document.createElement("div");
+    header.className = "ct-manage-chores-header";
+
+    const titleBox = document.createElement("div");
+    const listSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+    titleBox.innerHTML = `
+      <h4 style="margin:0; font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center;">
+        ${listSvg}<span>Family Chores Inventory (${this.tasks.length})</span>
+      </h4>
+      <p style="margin:2px 0 0 0; font-size:12px; color:#94a3b8;">Edit routine chore frequencies or remove obsolete chores</p>
+    `;
+    header.appendChild(titleBox);
+
+    const filterActions = document.createElement("div");
+    filterActions.style.display = "flex";
+    filterActions.style.alignItems = "center";
+    filterActions.style.gap = "8px";
+
+    const filterPills = document.createElement("div");
+    filterPills.className = "ct-filter-pills";
+
+    const filters = [
+      { id: "all", label: `All (${this.tasks.length})` },
+      { id: "routine", label: `Routine (${this.tasks.filter((t) => t.category === "routine").length})` },
+      { id: "monetized", label: `Bounties (${this.tasks.filter((t) => t.category === "monetized").length})` }
+    ];
+
+    filters.forEach((f) => {
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = `ct-filter-pill ${self.manageChoresFilter === f.id ? "active" : ""}`;
+      pill.innerText = f.label;
+      pill.addEventListener("click", function () {
+        self.manageChoresFilter = f.id;
+        self.updateDom(50);
+      });
+      filterPills.appendChild(pill);
+    });
+    filterActions.appendChild(filterPills);
+
+    const newBtn = document.createElement("button");
+    newBtn.type = "button";
+    newBtn.className = "ct-btn-primary";
+    newBtn.style.padding = "6px 14px";
+    newBtn.style.minHeight = "36px";
+    newBtn.style.fontSize = "12.5px";
+    const plusSmallSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+    newBtn.innerHTML = `${plusSmallSvg}<span>${self.isCreatingChore ? "Close Creator" : "New Chore"}</span>`;
+    newBtn.addEventListener("click", function () {
+      self.isCreatingChore = !self.isCreatingChore;
+      self.updateDom(50);
+    });
+    filterActions.appendChild(newBtn);
+
+    header.appendChild(filterActions);
+    container.appendChild(header);
+
+    if (self.isCreatingChore || self.tasks.length === 0) {
+      const creatorCard = document.createElement("div");
+      creatorCard.className = "ct-card";
+      creatorCard.style.marginBottom = "14px";
+      creatorCard.style.borderColor = "rgba(56, 189, 248, 0.4)";
+      const creatorBody = self.buildCreateTaskTab();
+      creatorCard.appendChild(creatorBody);
+      container.appendChild(creatorCard);
+    }
+
+    // Filter tasks
+    let filteredTasks = this.tasks;
+    if (this.manageChoresFilter === "routine") {
+      filteredTasks = this.tasks.filter((t) => t.category === "routine");
+    } else if (this.manageChoresFilter === "monetized") {
+      filteredTasks = this.tasks.filter((t) => t.category === "monetized");
+    }
+
+    if (filteredTasks.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ct-empty-state";
+      empty.innerHTML = `
+        <p style="margin:0; font-size:15px; font-weight:600; color:#fff;">No chores match this filter</p>
+        <p style="margin:4px 0 0 0; font-size:13px; color:#94a3b8;">Tap '+ New Chore' to create a new routine chore or monetized bounty.</p>
+      `;
+      container.appendChild(empty);
+      return container;
+    }
+
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    filteredTasks.forEach((chore) => {
+      const isEditing = self.editingTaskId === chore.id;
+      const card = document.createElement("div");
+      card.className = "ct-chore-manage-card";
+
+      if (isEditing) {
+        // INLINE EDIT FORM
+        const editForm = document.createElement("div");
+        editForm.className = "ct-chore-inline-edit";
+
+        const draft = self.editingTaskDraft || {
+          title: chore.title,
+          category: chore.category,
+          frequency: (chore.recurrence && chore.recurrence.frequency) || "weekly",
+          days_of_week: (chore.recurrence && chore.recurrence.days_of_week) || [0, 1, 2, 3, 4, 5, 6],
+          reward_amount: String(chore.reward_amount || "5.00"),
+          assigned_to: chore.assigned_to || "up_for_grabs"
+        };
+
+        // Title
+        const titleGrp = document.createElement("div");
+        titleGrp.className = "ct-form-group";
+        titleGrp.style.marginBottom = "8px";
+        titleGrp.innerHTML = `<label class="ct-form-label" style="font-size:12px;">Edit Chore Title</label>`;
+        const titleInput = document.createElement("input");
+        titleInput.className = "ct-input";
+        titleInput.value = draft.title;
+        titleInput.style.padding = "8px 12px";
+        titleInput.style.minHeight = "40px";
+        titleInput.addEventListener("input", function (e) {
+          draft.title = e.target.value;
+        });
+        self.attachVirtualKeyboard(titleInput, "Edit Chore Title", "text", function (val) {
+          draft.title = val;
+        });
+        titleGrp.appendChild(titleInput);
+        editForm.appendChild(titleGrp);
+
+        // Category Toggle
+        const catGrp = document.createElement("div");
+        catGrp.className = "ct-form-group";
+        catGrp.style.marginBottom = "8px";
+        catGrp.innerHTML = `<label class="ct-form-label" style="font-size:12px;">Category</label>`;
+        const catRow = document.createElement("div");
+        catRow.style.display = "flex";
+        catRow.style.gap = "8px";
+
+        const rBtn = document.createElement("button");
+        rBtn.type = "button";
+        rBtn.className = `ct-btn-secondary ${draft.category === "routine" ? "ct-btn-primary" : ""}`;
+        rBtn.style.padding = "6px 12px";
+        rBtn.style.minHeight = "36px";
+        rBtn.style.fontSize = "12px";
+        rBtn.innerText = "Routine ($0.00)";
+        rBtn.addEventListener("click", function () {
+          draft.category = "routine";
+          self.updateDom(50);
+        });
+
+        const mBtn = document.createElement("button");
+        mBtn.type = "button";
+        mBtn.className = `ct-btn-secondary ${draft.category === "monetized" ? "ct-btn-primary" : ""}`;
+        mBtn.style.padding = "6px 12px";
+        mBtn.style.minHeight = "36px";
+        mBtn.style.fontSize = "12px";
+        mBtn.innerText = "Monetized Bounty ($)";
+        mBtn.addEventListener("click", function () {
+          draft.category = "monetized";
+          self.updateDom(50);
+        });
+
+        catRow.appendChild(rBtn);
+        catRow.appendChild(mBtn);
+        catGrp.appendChild(catRow);
+        editForm.appendChild(catGrp);
+
+        // If routine: Recurrence frequency
+        if (draft.category === "routine") {
+          const freqGrp = document.createElement("div");
+          freqGrp.className = "ct-form-group";
+          freqGrp.style.marginBottom = "8px";
+          freqGrp.innerHTML = `<label class="ct-form-label" style="font-size:12px;">Recurrence Schedule</label>`;
+
+          const freqGrid = document.createElement("div");
+          freqGrid.className = "ct-recurrence-grid";
+
+          const freqOptions = [
+            { id: "weekly", label: "Daily / Weekly" },
+            { id: "bi_weekly", label: "Every 2 Weeks" },
+            { id: "every_3_weeks", label: "Every 3 Weeks" },
+            { id: "twice_a_month", label: "Twice a Month" },
+            { id: "monthly", label: "Once a Month" },
+            { id: "twice_a_year", label: "Twice a Year" },
+            { id: "yearly", label: "Once a Year" }
+          ];
+
+          freqOptions.forEach((opt) => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = `ct-recurrence-chip ${draft.frequency === opt.id ? "selected" : ""}`;
+            chip.innerText = opt.label;
+            chip.addEventListener("click", function () {
+              draft.frequency = opt.id;
+              self.updateDom(50);
+            });
+            freqGrid.appendChild(chip);
+          });
+          freqGrp.appendChild(freqGrid);
+
+          if (draft.frequency === "weekly") {
+            const daysRow = document.createElement("div");
+            daysRow.className = "ct-days-selector";
+            daysRow.style.gap = "4px";
+
+            [0, 1, 2, 3, 4, 5, 6].forEach((d) => {
+              const dChip = document.createElement("div");
+              const isSel = (draft.days_of_week || []).includes(d);
+              dChip.className = `ct-day-chip ${isSel ? "selected" : ""}`;
+              dChip.style.height = "36px";
+              dChip.style.fontSize = "12px";
+              dChip.innerText = dayNames[d];
+              dChip.addEventListener("click", function () {
+                const arr = draft.days_of_week || [];
+                if (arr.includes(d)) {
+                  draft.days_of_week = arr.filter((x) => x !== d);
+                } else {
+                  draft.days_of_week = [...arr, d];
+                }
+                self.updateDom(50);
+              });
+              daysRow.appendChild(dChip);
+            });
+            freqGrp.appendChild(daysRow);
+          } else if (draft.frequency === "bi_weekly") {
+            const tip = document.createElement("div");
+            tip.className = "ct-recurrence-tip";
+            const clockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+            tip.innerHTML = `${clockSvg}<span>Resets 14 days after completion for regular bi-weekly tasks.</span>`;
+            freqGrp.appendChild(tip);
+          } else if (draft.frequency === "every_3_weeks") {
+            const tip = document.createElement("div");
+            tip.className = "ct-recurrence-tip";
+            const clockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+            tip.innerHTML = `${clockSvg}<span>Resets 21 days after completion for rotating 3-week chore cycles.</span>`;
+            freqGrp.appendChild(tip);
+          } else if (draft.frequency === "twice_a_month") {
+            const tip = document.createElement("div");
+            tip.className = "ct-recurrence-tip";
+            const calSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+            tip.innerHTML = `${calSvg}<span>Resets twice a month (on the 1st and 16th of each calendar month).</span>`;
+            freqGrp.appendChild(tip);
+          } else if (draft.frequency === "monthly") {
+            const tip = document.createElement("div");
+            tip.className = "ct-recurrence-tip";
+            const calSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+            tip.innerHTML = `${calSvg}<span>Resets automatically at the start of each calendar month.</span>`;
+            freqGrp.appendChild(tip);
+          } else if (draft.frequency === "twice_a_year") {
+            const tip = document.createElement("div");
+            tip.className = "ct-recurrence-tip";
+            const refreshSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#a855f7;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`;
+            tip.innerHTML = `${refreshSvg}<span>Resets every 6 months (Jan 1 &amp; Jul 1) for semi-annual household chores.</span>`;
+            freqGrp.appendChild(tip);
+          } else if (draft.frequency === "yearly") {
+            const tip = document.createElement("div");
+            tip.className = "ct-recurrence-tip";
+            const starSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:5px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+            tip.innerHTML = `${starSvg}<span>Resets once a year on January 1st for annual maintenance tasks.</span>`;
+            freqGrp.appendChild(tip);
+          }
+
+          editForm.appendChild(freqGrp);
+        } else {
+          // Monetized reward input
+          const rewGrp = document.createElement("div");
+          rewGrp.className = "ct-form-group";
+          rewGrp.style.marginBottom = "8px";
+          rewGrp.innerHTML = `<label class="ct-form-label" style="font-size:12px;">Reward Amount (${self.config.currencySymbol})</label>`;
+          const rewInput = document.createElement("input");
+          rewInput.type = "number";
+          rewInput.step = "0.50";
+          rewInput.className = "ct-input";
+          rewInput.value = draft.reward_amount;
+          rewInput.style.padding = "8px 12px";
+          rewInput.style.minHeight = "40px";
+          rewInput.addEventListener("input", function (e) {
+            draft.reward_amount = e.target.value;
+          });
+          self.attachVirtualKeyboard(rewInput, "Reward Amount", "number", function (val) {
+            draft.reward_amount = val;
+          });
+          rewGrp.appendChild(rewInput);
+          editForm.appendChild(rewGrp);
+        }
+
+        // Assignee selection
+        const assignGrp = document.createElement("div");
+        assignGrp.className = "ct-form-group";
+        assignGrp.style.marginBottom = "8px";
+        assignGrp.innerHTML = `<label class="ct-form-label" style="font-size:12px;">Assigned To</label>`;
+        const assignChips = document.createElement("div");
+        assignChips.className = "ct-assign-chips-grid";
+
+        const gChip = document.createElement("button");
+        gChip.type = "button";
+        gChip.className = `ct-assign-chip grabs ${draft.assigned_to === "up_for_grabs" ? "selected" : ""}`;
+        gChip.style.padding = "6px 10px";
+        gChip.style.fontSize = "12px";
+        const boltMini = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+        gChip.innerHTML = `${boltMini}<span>Up For Grabs</span>`;
+        gChip.addEventListener("click", function () {
+          draft.assigned_to = "up_for_grabs";
+          self.updateDom(50);
+        });
+        assignChips.appendChild(gChip);
+
+        self.profiles.forEach((p) => {
+          const cChip = document.createElement("button");
+          cChip.type = "button";
+          cChip.className = `ct-assign-chip ${draft.assigned_to === p.id ? "selected" : ""}`;
+          cChip.style.padding = "6px 10px";
+          cChip.style.fontSize = "12px";
+          const userMini = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+          cChip.innerHTML = `${userMini}<span>${p.name}</span>`;
+          cChip.addEventListener("click", function () {
+            draft.assigned_to = p.id;
+            self.updateDom(50);
+          });
+          assignChips.appendChild(cChip);
+        });
+        assignGrp.appendChild(assignChips);
+        editForm.appendChild(assignGrp);
+
+        // Edit form buttons (Save & Cancel)
+        const btnRow = document.createElement("div");
+        btnRow.style.display = "flex";
+        btnRow.style.gap = "8px";
+        btnRow.style.marginTop = "6px";
+
+        const saveBtn = document.createElement("button");
+        saveBtn.type = "button";
+        saveBtn.className = "ct-btn-success";
+        saveBtn.style.padding = "8px 16px";
+        saveBtn.style.minHeight = "40px";
+        saveBtn.style.fontSize = "13px";
+        const saveCheck = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        saveBtn.innerHTML = `${saveCheck}<span>Save Changes</span>`;
+        saveBtn.addEventListener("click", function () {
+          if (!draft.title.trim()) {
+            alert("Chore title cannot be empty.");
+            return;
+          }
+          self.sendSocketNotification("UPDATE_TASK", {
+            taskId: chore.id,
+            title: draft.title,
+            category: draft.category,
+            frequency: draft.frequency,
+            days_of_week: draft.days_of_week,
+            reward_amount: draft.reward_amount,
+            assigned_to: draft.assigned_to
+          });
+          // Optimistically update local task
+          chore.title = draft.title.trim();
+          chore.category = draft.category;
+          chore.assigned_to = draft.assigned_to;
+          if (draft.category === "routine") {
+            chore.reward_amount = 0;
+            chore.recurrence = {
+              frequency: draft.frequency,
+              days_of_week: draft.days_of_week || [0, 1, 2, 3, 4, 5, 6]
+            };
+          } else {
+            chore.reward_amount = parseFloat(draft.reward_amount) || 0;
+            chore.recurrence = null;
+          }
+          self.editingTaskId = null;
+          self.editingTaskDraft = null;
+          self.updateDom(100);
+        });
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "ct-btn-secondary";
+        cancelBtn.style.padding = "8px 16px";
+        cancelBtn.style.minHeight = "40px";
+        cancelBtn.style.fontSize = "13px";
+        cancelBtn.innerText = "Cancel";
+        cancelBtn.addEventListener("click", function () {
+          self.editingTaskId = null;
+          self.editingTaskDraft = null;
+          self.updateDom(50);
+        });
+
+        btnRow.appendChild(saveBtn);
+        btnRow.appendChild(cancelBtn);
+        editForm.appendChild(btnRow);
+
+        card.appendChild(editForm);
+      } else {
+        // VIEW MODE CARD
+        const mainRow = document.createElement("div");
+        mainRow.className = "ct-chore-card-main";
+
+        const titleArea = document.createElement("div");
+        titleArea.className = "ct-chore-card-title-area";
+
+        const title = document.createElement("div");
+        title.className = "ct-chore-card-name";
+        title.innerText = chore.title;
+        titleArea.appendChild(title);
+
+        // Category Badge
+        const catBadge = document.createElement("span");
+        if (chore.category === "routine") {
+          catBadge.className = "ct-badge ct-badge-routine";
+          catBadge.innerText = "Routine";
+        } else {
+          catBadge.className = "ct-badge ct-badge-monetized";
+          catBadge.innerText = `${self.config.currencySymbol}${(parseFloat(chore.reward_amount) || 0).toFixed(2)} Bounty`;
+        }
+        titleArea.appendChild(catBadge);
+
+        // Schedule / Recurrence Badge
+        const schedBadge = document.createElement("span");
+        schedBadge.className = "ct-badge";
+        schedBadge.style.background = "rgba(255, 255, 255, 0.08)";
+        schedBadge.style.color = "#cbd5e1";
+        schedBadge.style.border = "1px solid rgba(255, 255, 255, 0.15)";
+
+        if (chore.category === "routine" && chore.recurrence) {
+          const freq = chore.recurrence.frequency;
+          if (freq === "monthly") {
+            const calMiniSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+            schedBadge.innerHTML = `${calMiniSvg}<span>Once a Month</span>`;
+          } else if (freq === "twice_a_year") {
+            const refMiniSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>`;
+            schedBadge.innerHTML = `${refMiniSvg}<span>Twice a Year</span>`;
+          } else if (freq === "yearly") {
+            const starMiniSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+            schedBadge.innerHTML = `${starMiniSvg}<span>Once a Year</span>`;
+          } else {
+            const daysArr = chore.recurrence.days_of_week || [];
+            const repMiniSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
+            if (daysArr.length === 7 || daysArr.length === 0) {
+              schedBadge.innerHTML = `${repMiniSvg}<span>Daily (Everyday)</span>`;
+            } else {
+              const dayStr = daysArr.map((d) => dayNames[d]).join(", ");
+              schedBadge.innerHTML = `${repMiniSvg}<span>${dayStr}</span>`;
+            }
+          }
+        } else {
+          schedBadge.innerHTML = `<span>On-Demand Bounty</span>`;
+        }
+        titleArea.appendChild(schedBadge);
+
+        // Assignee badge
+        const assignBadge = document.createElement("span");
+        assignBadge.className = "ct-badge";
+        assignBadge.style.background = "rgba(0, 0, 0, 0.3)";
+        assignBadge.style.border = "1px solid rgba(255, 255, 255, 0.1)";
+
+        if (chore.assigned_to === "up_for_grabs") {
+          const boltMiniSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+          assignBadge.innerHTML = `${boltMiniSvg}<span style="color:#d8b4fe;">Up For Grabs</span>`;
+        } else {
+          const childP = self.profiles.find((p) => p.id === chore.assigned_to);
+          const userMiniSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+          assignBadge.innerHTML = `${userMiniSvg}<span style="color:#fff;">${childP ? childP.name : "Assigned"}</span>`;
+        }
+        titleArea.appendChild(assignBadge);
+
+        mainRow.appendChild(titleArea);
+
+        // Action buttons: Edit & Remove
+        const actions = document.createElement("div");
+        actions.className = "ct-chore-card-actions";
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "ct-btn-edit-chore";
+        const pencilSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+        editBtn.innerHTML = `${pencilSvg}<span>Edit</span>`;
+        editBtn.addEventListener("click", function () {
+          self.editingTaskId = chore.id;
+          self.editingTaskDraft = {
+            title: chore.title,
+            category: chore.category,
+            frequency: (chore.recurrence && chore.recurrence.frequency) || "weekly",
+            days_of_week: (chore.recurrence && chore.recurrence.days_of_week) || [0, 1, 2, 3, 4, 5, 6],
+            reward_amount: String(chore.reward_amount || "5.00"),
+            assigned_to: chore.assigned_to || "up_for_grabs"
+          };
+          self.updateDom(50);
+        });
+        actions.appendChild(editBtn);
+
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "ct-btn-delete-chore";
+        const trashSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        delBtn.innerHTML = `${trashSvg}<span>Remove</span>`;
+        delBtn.addEventListener("click", function () {
+          if (confirm(`Are you sure you want to remove the chore "${chore.title}"?`)) {
+            self.sendSocketNotification("DELETE_TASK", { taskId: chore.id });
+            self.tasks = self.tasks.filter((t) => t.id !== chore.id);
+            self.updateDom(100);
+          }
+        });
+        actions.appendChild(delBtn);
+
+        mainRow.appendChild(actions);
+        card.appendChild(mainRow);
+      }
+
+      container.appendChild(card);
+    });
+
+    return container;
+  },
+
+  /**
+   * Chore Creation Form Tab:
+   * Supports Routine Expectations (Daily, Weekly, Once a Month, Twice a Year, Once a Year)
+   * or Monetized Bounties with multi-child or up-for-grabs assignment.
    */
   buildCreateTaskTab: function () {
     const self = this;
@@ -1977,7 +2557,7 @@ Module.register("MMM-ChoreTracker", {
     titleGroup.innerHTML = `<label class="ct-form-label">Chore Title</label>`;
     const titleInput = document.createElement("input");
     titleInput.className = "ct-input";
-    titleInput.placeholder = "e.g., Wash dishes, Walk the dog...";
+    titleInput.placeholder = "e.g., Wash dishes, Clean bedroom, Replace furnace filters...";
     titleInput.value = this.newTaskDraft.title;
     titleInput.addEventListener("input", function (e) {
       self.newTaskDraft.title = e.target.value;
@@ -1998,18 +2578,22 @@ Module.register("MMM-ChoreTracker", {
     catToggleRow.style.gap = "10px";
 
     const routineBtn = document.createElement("button");
+    routineBtn.type = "button";
     routineBtn.className = `ct-btn-secondary ${this.newTaskDraft.category === "routine" ? "ct-btn-primary" : ""}`;
     routineBtn.style.flex = "1";
-    routineBtn.innerText = "Routine Expectation ($0.00)";
+    const routineIconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>`;
+    routineBtn.innerHTML = `${routineIconSvg}<span>Routine Expectation ($0.00)</span>`;
     routineBtn.addEventListener("click", function () {
       self.newTaskDraft.category = "routine";
       self.updateDom(50);
     });
 
     const monetizedBtn = document.createElement("button");
+    monetizedBtn.type = "button";
     monetizedBtn.className = `ct-btn-secondary ${this.newTaskDraft.category === "monetized" ? "ct-btn-primary" : ""}`;
     monetizedBtn.style.flex = "1";
-    monetizedBtn.innerText = "Monetized Bounty ($)";
+    const coinIconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`;
+    monetizedBtn.innerHTML = `${coinIconSvg}<span>Monetized Bounty ($)</span>`;
     monetizedBtn.addEventListener("click", function () {
       self.newTaskDraft.category = "monetized";
       self.updateDom(50);
@@ -2039,45 +2623,113 @@ Module.register("MMM-ChoreTracker", {
       rewardGroup.appendChild(rewardInput);
       form.appendChild(rewardGroup);
     } else {
-      // If Routine: Days of Week recurrence chips
-      const daysGroup = document.createElement("div");
-      daysGroup.className = "ct-form-group";
-      daysGroup.innerHTML = `<label class="ct-form-label">Recurring Days of Week</label>`;
+      // If Routine: Recurrence Frequency Selection (Daily/Weekly, Once a Month, Twice a Year, Once a Year)
+      const freqGroup = document.createElement("div");
+      freqGroup.className = "ct-form-group";
+      freqGroup.innerHTML = `<label class="ct-form-label">Recurrence Frequency</label>`;
 
-      const daysSelector = document.createElement("div");
-      daysSelector.className = "ct-days-selector";
+      const freqGrid = document.createElement("div");
+      freqGrid.className = "ct-recurrence-grid";
 
-      const days = [
-        { d: 0, label: "Sun" },
-        { d: 1, label: "Mon" },
-        { d: 2, label: "Tue" },
-        { d: 3, label: "Wed" },
-        { d: 4, label: "Thu" },
-        { d: 5, label: "Fri" },
-        { d: 6, label: "Sat" }
+      const currentFreq = self.newTaskDraft.frequency || "weekly";
+
+      const freqList = [
+        { id: "weekly", label: "Daily / Weekly" },
+        { id: "bi_weekly", label: "Every 2 Weeks" },
+        { id: "every_3_weeks", label: "Every 3 Weeks" },
+        { id: "twice_a_month", label: "Twice a Month" },
+        { id: "monthly", label: "Once a Month" },
+        { id: "twice_a_year", label: "Twice a Year" },
+        { id: "yearly", label: "Once a Year" }
       ];
 
-      days.forEach((item) => {
-        const chip = document.createElement("div");
-        const isSelected = (self.newTaskDraft.days_of_week || []).includes(item.d);
-        chip.className = `ct-day-chip ${isSelected ? "selected" : ""}`;
-        chip.innerText = item.label;
-
+      freqList.forEach((opt) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = `ct-recurrence-chip ${currentFreq === opt.id ? "selected" : ""}`;
+        chip.innerText = opt.label;
         chip.addEventListener("click", function () {
-          const arr = self.newTaskDraft.days_of_week || [];
-          if (arr.includes(item.d)) {
-            self.newTaskDraft.days_of_week = arr.filter((x) => x !== item.d);
-          } else {
-            self.newTaskDraft.days_of_week = [...arr, item.d];
-          }
+          self.newTaskDraft.frequency = opt.id;
           self.updateDom(50);
         });
-
-        daysSelector.appendChild(chip);
+        freqGrid.appendChild(chip);
       });
+      freqGroup.appendChild(freqGrid);
 
-      daysGroup.appendChild(daysSelector);
-      form.appendChild(daysGroup);
+      if (currentFreq === "weekly") {
+        // Days of Week recurrence chips
+        const daysSelector = document.createElement("div");
+        daysSelector.className = "ct-days-selector";
+
+        const days = [
+          { d: 0, label: "Sun" },
+          { d: 1, label: "Mon" },
+          { d: 2, label: "Tue" },
+          { d: 3, label: "Wed" },
+          { d: 4, label: "Thu" },
+          { d: 5, label: "Fri" },
+          { d: 6, label: "Sat" }
+        ];
+
+        days.forEach((item) => {
+          const chip = document.createElement("div");
+          const isSelected = (self.newTaskDraft.days_of_week || []).includes(item.d);
+          chip.className = `ct-day-chip ${isSelected ? "selected" : ""}`;
+          chip.innerText = item.label;
+
+          chip.addEventListener("click", function () {
+            const arr = self.newTaskDraft.days_of_week || [];
+            if (arr.includes(item.d)) {
+              self.newTaskDraft.days_of_week = arr.filter((x) => x !== item.d);
+            } else {
+              self.newTaskDraft.days_of_week = [...arr, item.d];
+            }
+            self.updateDom(50);
+          });
+
+          daysSelector.appendChild(chip);
+        });
+
+        freqGroup.appendChild(daysSelector);
+      } else if (currentFreq === "bi_weekly") {
+        const tip = document.createElement("div");
+        tip.className = "ct-recurrence-tip";
+        const clockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+        tip.innerHTML = `${clockSvg}<span>Bi-weekly routine: resets 14 days after completion for regular two-week chore cycles.</span>`;
+        freqGroup.appendChild(tip);
+      } else if (currentFreq === "every_3_weeks") {
+        const tip = document.createElement("div");
+        tip.className = "ct-recurrence-tip";
+        const clockSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+        tip.innerHTML = `${clockSvg}<span>Three-week routine: resets 21 days after completion for rotating household duties.</span>`;
+        freqGroup.appendChild(tip);
+      } else if (currentFreq === "twice_a_month") {
+        const tip = document.createElement("div");
+        tip.className = "ct-recurrence-tip";
+        const calSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+        tip.innerHTML = `${calSvg}<span>Twice a month routine: resets on the 1st and 16th of each calendar month.</span>`;
+        freqGroup.appendChild(tip);
+      } else if (currentFreq === "monthly") {
+        const tip = document.createElement("div");
+        tip.className = "ct-recurrence-tip";
+        const calSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#38bdf8;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+        tip.innerHTML = `${calSvg}<span>Monthly routine: resets automatically at the start of every calendar month.</span>`;
+        freqGroup.appendChild(tip);
+      } else if (currentFreq === "twice_a_year") {
+        const tip = document.createElement("div");
+        tip.className = "ct-recurrence-tip";
+        const refreshSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px; color:#a855f7;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`;
+        tip.innerHTML = `${refreshSvg}<span>Semi-annual routine: resets every 6 months (Jan 1 &amp; Jul 1) for seasonal tasks (smoke alarms, deep cleaning).</span>`;
+        freqGroup.appendChild(tip);
+      } else if (currentFreq === "yearly") {
+        const tip = document.createElement("div");
+        tip.className = "ct-recurrence-tip";
+        const starSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:5px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        tip.innerHTML = `${starSvg}<span>Annual routine: resets once a year on January 1st for major annual maintenance.</span>`;
+        freqGroup.appendChild(tip);
+      }
+
+      form.appendChild(freqGroup);
     }
 
     // Multi-Child Assign Chore To Selector
@@ -2102,7 +2754,8 @@ Module.register("MMM-ChoreTracker", {
     grabsChip.type = "button";
     const isGrabs = currentAssigned.includes("up_for_grabs");
     grabsChip.className = `ct-assign-chip grabs ${isGrabs ? "selected" : ""}`;
-    grabsChip.innerHTML = `<span>⚡</span> <strong>Up For Grabs</strong> <small style="opacity:0.8;">(Open bounty)</small>`;
+    const boltChipSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+    grabsChip.innerHTML = `${boltChipSvg}<strong>Up For Grabs</strong> <small style="opacity:0.8;">(Open bounty)</small>`;
     grabsChip.addEventListener("click", function (e) {
       e.preventDefault();
       self.newTaskDraft.assigned_to = ["up_for_grabs"];
@@ -2116,7 +2769,11 @@ Module.register("MMM-ChoreTracker", {
       chip.type = "button";
       const isSelected = currentAssigned.includes(p.id);
       chip.className = `ct-assign-chip ${isSelected ? "selected" : ""}`;
-      chip.innerHTML = `${isSelected ? "✓" : "+"} 👤 <strong>${p.name}</strong>`;
+      const userChipSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin:0 4px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+      const checkOrPlusSvg = isSelected
+        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+        : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+      chip.innerHTML = `${checkOrPlusSvg}${userChipSvg}<strong>${p.name}</strong>`;
 
       chip.addEventListener("click", function (e) {
         e.preventDefault();
@@ -2150,7 +2807,8 @@ Module.register("MMM-ChoreTracker", {
       selectAllBtn.className = "ct-btn-secondary";
       selectAllBtn.style.padding = "4px 10px";
       selectAllBtn.style.fontSize = "11.5px";
-      selectAllBtn.innerText = "👥 Assign to All Children";
+      const allUsersSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`;
+      selectAllBtn.innerHTML = `${allUsersSvg}<span>Assign to All Children</span>`;
       selectAllBtn.addEventListener("click", function (e) {
         e.preventDefault();
         self.newTaskDraft.assigned_to = self.profiles.map((p) => p.id);
@@ -2184,7 +2842,8 @@ Module.register("MMM-ChoreTracker", {
     // Save button
     const submitBtn = document.createElement("button");
     submitBtn.className = "ct-btn-primary";
-    submitBtn.innerText = "💾 Save & Publish Chore to Mirror";
+    const saveChoreSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+    submitBtn.innerHTML = `${saveChoreSvg}<span>Save &amp; Publish Chore to Mirror</span>`;
     submitBtn.addEventListener("click", function () {
       if (!self.newTaskDraft.title.trim()) {
         alert("Please enter a chore title.");
@@ -2198,6 +2857,7 @@ Module.register("MMM-ChoreTracker", {
       self.sendSocketNotification("CREATE_TASK", {
         title: self.newTaskDraft.title,
         category: self.newTaskDraft.category,
+        frequency: self.newTaskDraft.frequency || "weekly",
         reward_amount: self.newTaskDraft.reward_amount,
         assigned_tos: assignList,
         assigned_to: assignList[0],
@@ -2208,14 +2868,15 @@ Module.register("MMM-ChoreTracker", {
       // Reset draft
       self.newTaskDraft = {
         title: "",
-        category: "monetized",
+        category: "routine",
+        frequency: "weekly",
         reward_amount: "5.00",
         assigned_to: ["up_for_grabs"],
         days_of_week: [0, 1, 2, 3, 4, 5, 6],
         initial_note: ""
       };
 
-      self.parentActiveTab = "approvals";
+      self.parentActiveTab = "manage_chores";
       self.updateDom(200);
     });
 
@@ -2244,7 +2905,8 @@ Module.register("MMM-ChoreTracker", {
     addTitle.style.fontSize = "14px";
     addTitle.style.fontWeight = "700";
     addTitle.style.color = "#38bdf8";
-    addTitle.innerText = "➕ Add a New Child";
+    const plusChildSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+    addTitle.innerHTML = `${plusChildSvg}<span>Add a New Child</span>`;
     addCard.appendChild(addTitle);
 
     const addRow = document.createElement("div");
@@ -2259,7 +2921,8 @@ Module.register("MMM-ChoreTracker", {
 
     const addBtn = document.createElement("button");
     addBtn.className = "ct-btn-primary";
-    addBtn.innerText = "Add Child";
+    const addIconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+    addBtn.innerHTML = `${addIconSvg}<span>Add Child</span>`;
     addBtn.style.whiteSpace = "nowrap";
 
     addBtn.addEventListener("click", function () {
@@ -2285,9 +2948,10 @@ Module.register("MMM-ChoreTracker", {
     listHeader.style.display = "flex";
     listHeader.style.justifyContent = "space-between";
     listHeader.style.alignItems = "center";
+    const usersHeaderSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`;
     listHeader.innerHTML = `
-      <h4 style="margin:0; font-size:14px; font-weight:700; color:#fff;">
-        Family Children (${this.profiles.length})
+      <h4 style="margin:0; font-size:14px; font-weight:700; color:#fff; display:flex; align-items:center;">
+        ${usersHeaderSvg}<span>Family Children (${this.profiles.length})</span>
       </h4>
       <span style="font-size:11px; color:#94a3b8;">Edit names or manage profiles</span>
     `;
@@ -2304,11 +2968,11 @@ Module.register("MMM-ChoreTracker", {
       const childCard = document.createElement("div");
       childCard.className = "ct-manage-child-card";
 
-      // Left: avatar badge
+      // Left: avatar badge (single letter initial)
       const avatar = document.createElement("div");
       avatar.className = "ct-kid-avatar";
       avatar.style.background = avatarGradients[idx % avatarGradients.length];
-      avatar.innerText = profile.name;
+      avatar.innerHTML = `<span style="font-weight:800; font-size:15px; color:#fff;">${(profile.name || "C").charAt(0).toUpperCase()}</span>`;
       childCard.appendChild(avatar);
 
       // Middle: editable input for name
@@ -2327,7 +2991,8 @@ Module.register("MMM-ChoreTracker", {
       // Save / Rename button
       const saveBtn = document.createElement("button");
       saveBtn.className = "ct-btn-secondary";
-      saveBtn.innerText = "💾 Save Name";
+      const saveDiskSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+      saveBtn.innerHTML = `${saveDiskSvg}<span>Save Name</span>`;
       saveBtn.addEventListener("click", function () {
         const newName = nameInput.value.trim();
         if (!newName) return;
@@ -2335,9 +3000,10 @@ Module.register("MMM-ChoreTracker", {
           profileId: profile.id,
           name: newName
         });
-        saveBtn.innerText = "✓ Saved!";
+        const checkSaveSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        saveBtn.innerHTML = `${checkSaveSvg}<span style="color:#10b981;">Saved!</span>`;
         setTimeout(() => {
-          saveBtn.innerText = "💾 Save Name";
+          saveBtn.innerHTML = `${saveDiskSvg}<span>Save Name</span>`;
         }, 1500);
       });
       actions.appendChild(saveBtn);
@@ -2347,7 +3013,8 @@ Module.register("MMM-ChoreTracker", {
         const delBtn = document.createElement("button");
         delBtn.className = "ct-btn-danger";
         delBtn.style.padding = "6px 12px";
-        delBtn.innerText = "🗑 Remove";
+        const trashSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        delBtn.innerHTML = `${trashSvg}<span>Remove</span>`;
         delBtn.addEventListener("click", function () {
           if (confirm(`Are you sure you want to remove ${profile.name}? Any assigned chores will become Up For Grabs.`)) {
             self.sendSocketNotification("DELETE_PROFILE", { profileId: profile.id });
@@ -2386,7 +3053,10 @@ Module.register("MMM-ChoreTracker", {
     const label = document.createElement("span");
     label.style.fontWeight = "600";
     label.style.fontSize = "15px";
-    label.innerText = "Select Child:";
+    label.style.display = "inline-flex";
+    label.style.alignItems = "center";
+    const userSelectSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:5px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+    label.innerHTML = `${userSelectSvg}<span>Select Child:</span>`;
     filterRow.appendChild(label);
 
     const select = document.createElement("select");
@@ -2423,10 +3093,15 @@ Module.register("MMM-ChoreTracker", {
     payoutBox.className = "ct-payout-box";
 
     payoutBox.innerHTML = `
-      <div>
-        <div class="ct-payout-amount-label">Verified Total Payout Due</div>
-        <div style="font-size:14px; color:#cbd5e1; margin-top:4px;">
-          ${approvedTasks.length} Approved ${approvedTasks.length === 1 ? "Chore" : "Chores"} Ready for Payout
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="width:40px; height:40px; border-radius:50%; background:rgba(16, 185, 129, 0.2); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+        </div>
+        <div>
+          <div class="ct-payout-amount-label">Verified Total Payout Due</div>
+          <div style="font-size:14px; color:#cbd5e1; margin-top:4px;">
+            ${approvedTasks.length} Approved ${approvedTasks.length === 1 ? "Chore" : "Chores"} Ready for Payout
+          </div>
         </div>
       </div>
       <div class="ct-payout-amount-val">
@@ -2457,8 +3132,9 @@ Module.register("MMM-ChoreTracker", {
       approvedTasks.forEach((t) => {
         const row = document.createElement("div");
         row.className = "ct-audit-item";
+        const checkAuditSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
         row.innerHTML = `
-          <span>✓ ${t.title}</span>
+          <span style="display:inline-flex; align-items:center;">${checkAuditSvg}${t.title}</span>
           <span class="ct-audit-price">${self.config.currencySymbol}${(parseFloat(t.reward_amount) || 0).toFixed(2)}</span>
         `;
         auditList.appendChild(row);
@@ -2470,7 +3146,8 @@ Module.register("MMM-ChoreTracker", {
     if (approvedTasks.length > 0) {
       const payoutBtn = document.createElement("button");
       payoutBtn.className = "ct-btn-success";
-      payoutBtn.innerText = `💰 Process Payout (${self.config.currencySymbol}${totalDue.toFixed(2)}) & Write Audit Log`;
+      const coinPayoutSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`;
+      payoutBtn.innerHTML = `${coinPayoutSvg}<span>Process Payout (${self.config.currencySymbol}${totalDue.toFixed(2)}) &amp; Write Audit Log</span>`;
 
       payoutBtn.addEventListener("click", function () {
         const startDate = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
@@ -2508,7 +3185,8 @@ Module.register("MMM-ChoreTracker", {
     if (records.length === 0) {
       const empty = document.createElement("div");
       empty.className = "ct-empty-state";
-      empty.innerHTML = `<p>No payout audit records found yet.</p>`;
+      const histEmptySvg = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block; margin:0 auto 10px auto;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+      empty.innerHTML = `${histEmptySvg}<p style="margin:0; font-size:15px; color:#cbd5e1;">No payout audit records found yet.</p><p style="margin:4px 0 0 0; font-size:13px; color:#64748b;">Processed payouts will automatically appear in this permanent ledger.</p>`;
       container.appendChild(empty);
       return container;
     }
@@ -2535,10 +3213,13 @@ Module.register("MMM-ChoreTracker", {
           })
         : rec.date_range_end || "";
 
+      const userHistSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+
       card.innerHTML = `
         <div>
-          <div style="font-weight:700; font-size:16px; color:#fff;">
-            👤 ${profile ? profile.name : rec.profile_id}
+          <div style="font-weight:700; font-size:16px; color:#fff; display:flex; align-items:center;">
+            ${userHistSvg}
+            <span>${profile ? profile.name : rec.profile_id}</span>
           </div>
           <div style="font-size:13px; color:#94a3b8; margin-top:3px;">
             Processed: ${dateStr} • Ref: <code>${rec.id}</code>

@@ -492,7 +492,9 @@ module.exports = NodeHelper.create({
     if (!this.choresDb) return;
 
     const now = new Date();
-    const todayStr = this.getLocalDateString(now);
+    const todayStr = this.getLocalDateString(now); // "YYYY-MM-DD"
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-11
     const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
     this.lastCheckedDateStr = todayStr;
@@ -502,22 +504,92 @@ module.exports = NodeHelper.create({
 
     tasks.forEach((task) => {
       if (task.category === "routine" && task.recurrence) {
-        const days = Array.isArray(task.recurrence.days_of_week)
-          ? task.recurrence.days_of_week
-          : [0, 1, 2, 3, 4, 5, 6];
-
+        const freq = task.recurrence.frequency || "weekly";
         const lastCompleted = task.last_completed_date || "";
 
-        // If not completed today (or completed on a previous calendar date)
-        if (lastCompleted < todayStr) {
-          // If today is one of the recurrence days, chore must be ready/reset
-          if (days.includes(dayOfWeek)) {
+        if (freq === "weekly" || freq === "daily") {
+          // Daily or weekly recurrence based on days_of_week
+          if (lastCompleted < todayStr) {
             if (task.is_completed_today !== false) {
               task.is_completed_today = false;
               modified = true;
             }
-          } else {
-            // Not a recurrence day today
+          }
+        } else if (freq === "bi_weekly" || freq === "every_2_weeks") {
+          // Every 2 weeks: resets after 14 days have elapsed since last completion
+          if (lastCompleted) {
+            const diffDays = Math.floor((new Date(todayStr).getTime() - new Date(lastCompleted).getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 14) {
+              if (task.is_completed_today !== false) {
+                task.is_completed_today = false;
+                modified = true;
+              }
+            }
+          }
+        } else if (freq === "every_3_weeks") {
+          // Every 3 weeks: resets after 21 days have elapsed since last completion
+          if (lastCompleted) {
+            const diffDays = Math.floor((new Date(todayStr).getTime() - new Date(lastCompleted).getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 21) {
+              if (task.is_completed_today !== false) {
+                task.is_completed_today = false;
+                modified = true;
+              }
+            }
+          }
+        } else if (freq === "twice_a_month" || freq === "bimonthly") {
+          // Twice a month: resets on the 1st and the 16th of each calendar month
+          const currentDay = now.getDate();
+          const currentPeriod = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${currentDay <= 15 ? "P1" : "P2"}`;
+          let lastPeriod = "";
+          if (lastCompleted) {
+            const parts = lastCompleted.split("-");
+            if (parts.length >= 3) {
+              const lYear = parts[0];
+              const lMonth = parts[1];
+              const lDay = parseInt(parts[2], 10);
+              lastPeriod = `${lYear}-${lMonth}-${lDay <= 15 ? "P1" : "P2"}`;
+            }
+          }
+          if (lastPeriod < currentPeriod) {
+            if (task.is_completed_today !== false) {
+              task.is_completed_today = false;
+              modified = true;
+            }
+          }
+        } else if (freq === "monthly" || freq === "once_a_month") {
+          // Once a month: resets when a new calendar month begins (e.g. 2026-09 vs 2026-10)
+          const currentMonthPrefix = todayStr.substring(0, 7);
+          const lastMonthPrefix = lastCompleted ? lastCompleted.substring(0, 7) : "";
+          if (lastMonthPrefix < currentMonthPrefix) {
+            if (task.is_completed_today !== false) {
+              task.is_completed_today = false;
+              modified = true;
+            }
+          }
+        } else if (freq === "twice_a_year" || freq === "semi_annual") {
+          // Twice a year: resets every 6 months (H1: Jan-Jun, H2: Jul-Dec)
+          const currentHalf = `${currentYear}-H${currentMonth < 6 ? "1" : "2"}`;
+          let lastHalf = "";
+          if (lastCompleted) {
+            const parts = lastCompleted.split("-");
+            if (parts.length >= 2) {
+              const lYear = parseInt(parts[0], 10);
+              const lMonth = parseInt(parts[1], 10) - 1;
+              lastHalf = `${lYear}-H${lMonth < 6 ? "1" : "2"}`;
+            }
+          }
+          if (lastHalf < currentHalf) {
+            if (task.is_completed_today !== false) {
+              task.is_completed_today = false;
+              modified = true;
+            }
+          }
+        } else if (freq === "annual" || freq === "yearly" || freq === "once_a_year") {
+          // Once a year: resets when a new calendar year begins
+          const currentYearStr = String(currentYear);
+          const lastYearStr = lastCompleted ? lastCompleted.substring(0, 4) : "";
+          if (lastYearStr < currentYearStr) {
             if (task.is_completed_today !== false) {
               task.is_completed_today = false;
               modified = true;
@@ -529,7 +601,7 @@ module.exports = NodeHelper.create({
 
     if (modified) {
       this.choresDb.set("tasks", tasks).write();
-      console.log(`[MMM-ChoreTracker] Recurrence evaluated for ${todayStr} (Day ${dayOfWeek}). Tasks updated.`);
+      console.log(`[MMM-ChoreTracker] Recurrence evaluated for ${todayStr}. Tasks updated.`);
       this.broadcastChoresUpdate();
     }
   },
@@ -611,6 +683,11 @@ module.exports = NodeHelper.create({
 
       case "CREATE_TASK":
         this.handleCreateTask(payload);
+        break;
+
+      case "UPDATE_TASK":
+      case "EDIT_TASK":
+        this.handleUpdateTask(payload);
         break;
 
       case "DELETE_TASK":
@@ -882,6 +959,7 @@ module.exports = NodeHelper.create({
 
     assignedList.forEach((assigneeId, idx) => {
       const newId = `task_${Date.now()}_${idx}_${generateUuid().substring(0, 4)}`;
+      const freq = payload.frequency || (isRoutine ? "weekly" : null);
       const newTask = {
         id: newId,
         title: String(payload.title).trim(),
@@ -890,10 +968,11 @@ module.exports = NodeHelper.create({
         assigned_to: assigneeId,
         recurrence: isRoutine
           ? {
-              frequency: "weekly",
+              frequency: freq,
               days_of_week: Array.isArray(payload.days_of_week) && payload.days_of_week.length > 0
                 ? payload.days_of_week.map(Number)
-                : [0, 1, 2, 3, 4, 5, 6]
+                : [0, 1, 2, 3, 4, 5, 6],
+              day_of_month: payload.day_of_month || 1
             }
           : null,
         last_completed_date: "",
@@ -988,6 +1067,49 @@ module.exports = NodeHelper.create({
     if (!this.choresDb || !payload || !payload.taskId) return;
 
     this.choresDb.get("tasks").remove({ id: payload.taskId }).write();
+    console.log(`[MMM-ChoreTracker] Deleted task ${payload.taskId}`);
+    this.broadcastChoresUpdate();
+  },
+
+  /**
+   * Updates an existing chore (title, category, reward, recurrence, assignee)
+   */
+  handleUpdateTask: function (payload) {
+    if (!this.choresDb || !payload || !payload.taskId) return;
+
+    const task = this.choresDb.get("tasks").find({ id: payload.taskId }).value();
+    if (!task) return;
+
+    const updates = {};
+    if (payload.title !== undefined) updates.title = String(payload.title).trim();
+    if (payload.category !== undefined) updates.category = payload.category;
+    if (payload.assigned_to !== undefined) updates.assigned_to = payload.assigned_to;
+
+    const targetCategory = payload.category !== undefined ? payload.category : task.category;
+    if (targetCategory === "routine") {
+      updates.reward_amount = 0.0;
+      const freq = payload.frequency || (task.recurrence ? task.recurrence.frequency : "weekly");
+      updates.recurrence = {
+        frequency: freq,
+        days_of_week: Array.isArray(payload.days_of_week) && payload.days_of_week.length > 0
+          ? payload.days_of_week.map(Number)
+          : (task.recurrence && Array.isArray(task.recurrence.days_of_week) ? task.recurrence.days_of_week : [0, 1, 2, 3, 4, 5, 6]),
+        day_of_month: payload.day_of_month || (task.recurrence ? task.recurrence.day_of_month : 1)
+      };
+    } else {
+      if (payload.reward_amount !== undefined) {
+        updates.reward_amount = parseFloat(payload.reward_amount) || 0.0;
+      }
+      updates.recurrence = null;
+    }
+
+    this.choresDb
+      .get("tasks")
+      .find({ id: payload.taskId })
+      .assign(updates)
+      .write();
+
+    console.log(`[MMM-ChoreTracker] Updated task ${payload.taskId}: "${updates.title || task.title}"`);
     this.broadcastChoresUpdate();
   },
 

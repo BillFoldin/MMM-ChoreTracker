@@ -24,7 +24,22 @@ import {
   Info,
   X,
   ArrowLeft,
-  Keyboard
+  ArrowDown,
+  Keyboard,
+  History,
+  ListChecks,
+  SlidersHorizontal,
+  Edit3,
+  User,
+  RefreshCw,
+  Award,
+  Zap,
+  Layers,
+  PlusCircle,
+  UserPlus,
+  Sun,
+  Delete,
+  AlertCircle
 } from "lucide-react";
 
 interface Note {
@@ -35,7 +50,28 @@ interface Note {
 
 interface Recurrence {
   frequency: string;
-  days_of_week: number[];
+  days_of_week?: number[];
+  day_of_month?: number;
+}
+
+function getRecurrenceLabel(recurrence: Recurrence | null): string {
+  if (!recurrence) return "Routine";
+  const freq = recurrence.frequency || "weekly";
+  if (freq === "weekly" || freq === "daily") {
+    const days = recurrence.days_of_week || [0, 1, 2, 3, 4, 5, 6];
+    if (days.length === 7) return "Daily";
+    if (days.length === 5 && !days.includes(0) && !days.includes(6)) return "Weekdays";
+    if (days.length === 2 && days.includes(0) && days.includes(6)) return "Weekends";
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days.map((d) => dayNames[d]).join(", ");
+  }
+  if (freq === "bi_weekly" || freq === "every_2_weeks") return "Every 2 Weeks";
+  if (freq === "every_3_weeks") return "Every 3 Weeks";
+  if (freq === "twice_a_month" || freq === "bimonthly") return "Twice a Month";
+  if (freq === "monthly" || freq === "once_a_month") return "Once a Month";
+  if (freq === "twice_a_year" || freq === "semi_annual") return "Twice a Year";
+  if (freq === "yearly" || freq === "annual") return "Once a Year";
+  return freq;
 }
 
 interface Task {
@@ -140,7 +176,7 @@ function PinPadModal({
           onClick={onCancel}
           className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold transition-none cursor-pointer"
         >
-          ✕
+          <X className="w-4 h-4" />
         </button>
       </div>
 
@@ -178,11 +214,20 @@ function PinPadModal({
             style={{ WebkitTapHighlightColor: "transparent" }}
             className={`h-16 rounded-2xl font-bold flex items-center justify-center select-none cursor-pointer touch-manipulation transition-none duration-0 active:scale-100 transform-none ${
               k === "Clear" || k === "⌫"
-                ? "bg-white/5 text-slate-300 text-sm"
+                ? "bg-white/5 text-slate-300 text-sm gap-1"
                 : "bg-white/10 text-white text-2xl"
             }`}
           >
-            {k}
+            {k === "Clear" ? (
+              <span className="flex items-center gap-1">
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </span>
+            ) : k === "⌫" ? (
+              <Delete className="w-5 h-5 text-rose-300" />
+            ) : (
+              k
+            )}
           </button>
         ))}
       </div>
@@ -355,12 +400,27 @@ export default function App() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [isParentUnlocked, setIsParentUnlocked] = useState(false);
-  const [parentActiveTab, setParentActiveTab] = useState<"approvals" | "create_task" | "children" | "payout_engine" | "history">("approvals");
+  const [parentActiveTab, setParentActiveTab] = useState<
+    "approvals" | "manage_chores" | "children" | "payout_engine" | "history"
+  >("manage_chores");
+  const [isCreatingChore, setIsCreatingChore] = useState(false);
+  const [manageChoresFilter, setManageChoresFilter] = useState<"all" | "routine" | "monetized">("all");
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [editingChoreDraft, setEditingChoreDraft] = useState<{
+    title: string;
+    category: "routine" | "monetized";
+    frequency: string;
+    days_of_week: number[];
+    reward_amount: string;
+    assigned_to: string;
+  } | null>(null);
   const [payoutProfileId, setPayoutProfileId] = useState("child_01");
 
   // In-Module Form State
   const [newTitle, setNewTitle] = useState("");
-  const [newCategory, setNewCategory] = useState<"routine" | "monetized">("monetized");
+  const [newCategory, setNewCategory] = useState<"routine" | "monetized">("routine");
+  const [newFrequency, setNewFrequency] = useState<string>("weekly");
   const [newReward, setNewReward] = useState("5.00");
   const [newAssignedTos, setNewAssignedTos] = useState<string[]>(["up_for_grabs"]);
   const [newDays, setNewDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
@@ -646,7 +706,7 @@ export default function App() {
       assigned_to: assigneeId,
       recurrence:
         newCategory === "routine"
-          ? { frequency: "weekly", days_of_week: newDays }
+          ? { frequency: newFrequency, days_of_week: newDays }
           : null,
       last_completed_date: "",
       is_completed_today: false,
@@ -660,7 +720,44 @@ export default function App() {
     setNewReward("5.00");
     setNewNote("");
     setNewAssignedTos(["up_for_grabs"]);
-    setParentActiveTab("approvals");
+    setParentActiveTab("manage_chores");
+  };
+
+  // Delete a chore from inventory
+  const handleDeleteChore = (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
+  // Update an existing chore
+  const handleUpdateChore = (draft: {
+    id: string;
+    title: string;
+    category: "routine" | "monetized";
+    frequency: string;
+    days_of_week: number[];
+    reward_amount: number;
+    assigned_to: string;
+  }) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === draft.id) {
+          return {
+            ...t,
+            title: draft.title.trim(),
+            category: draft.category,
+            reward_amount: draft.category === "monetized" ? draft.reward_amount : 0,
+            assigned_to: draft.assigned_to,
+            recurrence:
+              draft.category === "routine"
+                ? { frequency: draft.frequency, days_of_week: draft.days_of_week }
+                : null
+          };
+        }
+        return t;
+      })
+    );
+    setEditingTaskId(null);
+    setEditingChoreDraft(null);
   };
 
   // Add a new child profile
@@ -898,7 +995,10 @@ export default function App() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xl sm:text-2xl font-light">68°F ☀️</div>
+                  <div className="text-xl sm:text-2xl font-light flex items-center justify-end gap-1.5">
+                    <span>68°F</span>
+                    <Sun className="w-5 h-5 text-amber-400 shrink-0" />
+                  </div>
                   <div className="text-[11px] text-slate-400">Clear Skies • Living Room Mirror</div>
                 </div>
               </div>
@@ -964,8 +1064,8 @@ export default function App() {
                   ) : (
                     <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/10 mb-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-lg shadow-md shadow-sky-500/20">
-                          ✨
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md shadow-sky-500/20 text-white">
+                          <Sparkles className="w-5 h-5 text-white" />
                         </div>
                         <div>
                           <h2 className="text-base font-bold tracking-tight text-white">Family Chore Tracker</h2>
@@ -1037,7 +1137,10 @@ export default function App() {
                             {total === 0 ? (
                               <span>No chores</span>
                             ) : pending === 0 ? (
-                              <span className="text-emerald-400 font-bold">🎉 All {total} Done!</span>
+                              <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
+                                <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+                                <span>All {total} Done!</span>
+                              </span>
                             ) : (
                               <span>
                                 <strong className="text-sky-400">{done}/{total} Done</strong> • <span className="text-amber-400 font-semibold">{pending} Due</span>
@@ -1074,7 +1177,8 @@ export default function App() {
                         >
                           {/* Avatar Circle with Integrated Name */}
                           <div className="min-w-11 px-2.5 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-xs font-black text-white shadow-sm mb-1 group-hover:scale-105 transition-transform gap-1">
-                            <span>⚡</span> Bounties
+                            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span>Bounties</span>
                           </div>
 
                           <div className="text-[10px] text-purple-200 font-medium mb-1 leading-tight">
@@ -1311,13 +1415,18 @@ module.exports = NodeHelper.create({ ... });`}
                 </button>
                 <div className="w-11 h-11 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xl font-black text-white shadow-lg shadow-sky-500/20 shrink-0">
                   {selectedChildId === "up_for_grabs" ? (
-                    <Sparkles className="w-5 h-5 text-amber-300" />
+                    <Zap className="w-5 h-5 text-amber-300" />
                   ) : (
-                    <Users className="w-5 h-5 text-white" />
+                    <User className="w-5 h-5 text-white" />
                   )}
                 </div>
                 <div>
                   <h2 className="font-bold text-xl sm:text-2xl text-white tracking-tight flex items-center gap-2">
+                    {selectedChildId === "up_for_grabs" ? (
+                      <Zap className="w-5 h-5 text-amber-300 shrink-0" />
+                    ) : (
+                      <User className="w-5 h-5 text-sky-400 shrink-0" />
+                    )}
                     <span>{selectedChildId === "up_for_grabs" ? "Up For Grabs Bounties" : `${activeChild?.name}'s Chores`}</span>
                   </h2>
                   <p className="text-xs text-slate-400">
@@ -1334,28 +1443,32 @@ module.exports = NodeHelper.create({ ... });`}
                   setActiveModal(null);
                   setSelectedChildId(null);
                 }}
-                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 text-lg font-bold transition cursor-pointer"
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition cursor-pointer"
                 title="Close and return to dashboard"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Scrollable Content Body */}
-            <div className="p-4 sm:p-6 md:p-7 flex flex-col gap-4 flex-1 overflow-y-auto min-h-0 touch-pan-y overscroll-y-contain">
+            {/* Scrollable Content Body with smooth vertical scrolling */}
+            <div
+              style={{ WebkitOverflowScrolling: "touch", maxHeight: "calc(88vh - 120px)" }}
+              className="p-4 sm:p-6 md:p-7 flex flex-col gap-4 flex-1 overflow-y-auto min-h-0 touch-pan-y overscroll-y-contain"
+            >
               {/* Navigation Sub-Tabs */}
               {selectedChildId !== "up_for_grabs" && (
                 <div className="flex gap-2 bg-slate-950/80 border border-white/10 p-1.5 rounded-2xl max-w-lg shrink-0">
                   <button
                     type="button"
                     onClick={() => setChildModalTab("assigned")}
-                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                       childModalTab === "assigned"
                         ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    {activeChild?.name}'s Tasks ({tasks.filter((t) => t.assigned_to === selectedChildId).length})
+                    <User className="w-4 h-4 shrink-0" />
+                    <span>{activeChild?.name}'s Tasks ({tasks.filter((t) => t.assigned_to === selectedChildId).length})</span>
                   </button>
                   <button
                     type="button"
@@ -1366,7 +1479,7 @@ module.exports = NodeHelper.create({ ... });`}
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <Zap className="w-4 h-4 text-amber-300 shrink-0" />
                     <span>Available Up For Grabs ({tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length})</span>
                   </button>
                 </div>
@@ -1376,7 +1489,9 @@ module.exports = NodeHelper.create({ ... });`}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pb-8">
                 {childTasks.length === 0 ? (
                   <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
-                    <div className="text-4xl mb-3">🎉</div>
+                    <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3">
+                      <Sparkles className="w-7 h-7 text-emerald-400" />
+                    </div>
                     <h3 className="text-lg font-bold text-white mb-1">No chores pending here!</h3>
                     <p className="text-slate-400 text-sm">All caught up! Great job!</p>
                   </div>
@@ -1411,23 +1526,27 @@ module.exports = NodeHelper.create({ ... });`}
                               </h4>
 
                               {isRoutine ? (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider shrink-0">
-                                  Routine
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-sky-400" />
+                                  <span>{getRecurrenceLabel(task.recurrence)}</span>
                                 </span>
                               ) : (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 shrink-0 font-mono">
-                                  ${task.reward_amount.toFixed(2)} Bounty
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 shrink-0 font-mono flex items-center gap-1">
+                                  <DollarSign className="w-3 h-3 text-emerald-400" />
+                                  <span>${task.reward_amount.toFixed(2)} Bounty</span>
                                 </span>
                               )}
 
                               {!isRoutine && task.is_completed && (
                                 task.is_approved ? (
-                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500 text-emerald-400 shrink-0">
-                                    ✓ Approved
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500 text-emerald-400 shrink-0 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Approved</span>
                                   </span>
                                 ) : (
-                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500 text-amber-400 shrink-0">
-                                    ⏳ Needs Approval
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500 text-amber-400 shrink-0 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    <span>Needs Approval</span>
                                   </span>
                                 )
                               )}
@@ -1448,7 +1567,11 @@ module.exports = NodeHelper.create({ ... });`}
                             }`}
                             title={isDone ? "Mark incomplete" : "Mark completed"}
                           >
-                            ✓
+                            {isDone ? (
+                              <Check className="w-6 h-6 stroke-[3]" />
+                            ) : (
+                              <span className="w-4 h-4 rounded-full border border-white/20" />
+                            )}
                           </button>
                         </div>
 
@@ -1458,7 +1581,8 @@ module.exports = NodeHelper.create({ ... });`}
                             <span>{task.notes.length} {task.notes.length === 1 ? "note" : "notes"}</span>
                           </span>
                           <span className="text-sky-400 font-semibold group-hover:translate-x-0.5 transition flex items-center gap-1">
-                            Details &amp; Notes →
+                            <span>Details &amp; Notes</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
                           </span>
                         </div>
                       </div>
@@ -1504,7 +1628,10 @@ module.exports = NodeHelper.create({ ... });`}
                   <ArrowLeft className="w-4 h-4" />
                   <span>{selectedChildId ? "Back to Chores" : "Back"}</span>
                 </button>
-                <h3 className="font-bold text-lg sm:text-xl text-white">{activeTask.title}</h3>
+                <div className="flex items-center gap-2">
+                  <ListChecks className="w-5 h-5 text-sky-400 shrink-0" />
+                  <h3 className="font-bold text-lg sm:text-xl text-white">{activeTask.title}</h3>
+                </div>
               </div>
               <button
                 type="button"
@@ -1517,7 +1644,7 @@ module.exports = NodeHelper.create({ ... });`}
                 }}
                 className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 font-bold cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -1525,24 +1652,55 @@ module.exports = NodeHelper.create({ ... });`}
             <div className="p-5 sm:p-6 flex flex-col gap-4 flex-1 overflow-y-auto">
               {/* Info Card */}
               <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-4 space-y-2.5 text-xs sm:text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Type:</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Type:</span>
+                  </span>
                   <strong className={activeTask.category === "routine" ? "text-sky-400" : "text-emerald-400"}>
                     {activeTask.category === "routine" ? "Routine Expectation" : "Monetized Bounty"}
                   </strong>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Reward:</span>
+
+                {activeTask.category === "routine" && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Frequency:</span>
+                    </span>
+                    <strong className="text-sky-300 font-semibold">
+                      {getRecurrenceLabel(activeTask.recurrence)}
+                    </strong>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Reward:</span>
+                  </span>
                   <strong className="text-emerald-400 font-bold text-base">
                     {activeTask.category === "routine" ? "$0.00" : `$${activeTask.reward_amount.toFixed(2)}`}
                   </strong>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Assigned To:</span>
-                  <strong className="text-white">
-                    {activeTask.assigned_to === "up_for_grabs"
-                      ? "⚡ Up For Grabs"
-                      : profiles.find((p) => p.id === activeTask.assigned_to)?.name || "Assigned"}
+
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Assigned To:</span>
+                  </span>
+                  <strong className="text-white flex items-center gap-1">
+                    {activeTask.assigned_to === "up_for_grabs" ? (
+                      <>
+                        <Zap className="w-3.5 h-3.5 text-amber-300" />
+                        <span className="text-purple-300">Up For Grabs</span>
+                      </>
+                    ) : (
+                      <>
+                        <User className="w-3.5 h-3.5 text-sky-400" />
+                        <span>{profiles.find((p) => p.id === activeTask.assigned_to)?.name || "Assigned"}</span>
+                      </>
+                    )}
                   </strong>
                 </div>
               </div>
@@ -1555,7 +1713,7 @@ module.exports = NodeHelper.create({ ... });`}
                     onClick={() => handleClaimChore(activeTask.id)}
                     className="flex-1 py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-purple-600/20 cursor-pointer"
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <Zap className="w-4 h-4 text-amber-300" />
                     Claim for {activeChild?.name}
                   </button>
                 )}
@@ -1577,7 +1735,17 @@ module.exports = NodeHelper.create({ ... });`}
                           : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30"
                       }`}
                     >
-                      {isDone ? "↩ Mark as Incomplete" : "✓ Mark as Completed"}
+                      {isDone ? (
+                        <>
+                          <RotateCcw className="w-4 h-4" />
+                          <span>Mark as Incomplete</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Mark as Completed</span>
+                        </>
+                      )}
                     </button>
                   );
                 })()}
@@ -1585,8 +1753,9 @@ module.exports = NodeHelper.create({ ... });`}
 
               {/* Threaded Notes Feed */}
               <div className="flex-1 flex flex-col gap-2">
-                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  Threaded Notes &amp; Updates
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-sky-400" />
+                  <span>Threaded Notes &amp; Updates</span>
                 </h4>
                 <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-4 flex-1 min-h-[140px] max-h-56 overflow-y-auto space-y-2.5">
                   {activeTask.notes.length === 0 ? (
@@ -1604,8 +1773,20 @@ module.exports = NodeHelper.create({ ... });`}
                         }`}
                       >
                         <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
-                          <strong className="text-white text-xs">{n.author}</strong>
-                          <span>{new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          <div className="flex items-center gap-1.5 font-bold">
+                            {n.author.toLowerCase().includes("parent") ? (
+                              <ShieldCheck className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                            ) : (
+                              <User className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                            )}
+                            <span className={n.author.toLowerCase().includes("parent") ? "text-purple-300" : "text-sky-300"}>
+                              {n.author}
+                            </span>
+                          </div>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-500" />
+                            <span>{new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </span>
                         </div>
                         <p className="text-slate-200">{n.text}</p>
                       </div>
@@ -1665,7 +1846,7 @@ module.exports = NodeHelper.create({ ... });`}
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 bg-slate-950/70 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center text-base font-bold">
-                  ⭐
+                  <Sparkles className="w-5 h-5 text-amber-300" />
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-white">Who completed this chore?</h3>
@@ -1684,7 +1865,7 @@ module.exports = NodeHelper.create({ ... });`}
                 }}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 text-xs font-bold cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -1783,7 +1964,7 @@ module.exports = NodeHelper.create({ ... });`}
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 sm:px-7 py-4 bg-slate-950/70 shrink-0">
               <div className="flex items-center gap-3">
-                <span className="text-3xl">👑</span>
+                <ShieldCheck className="w-8 h-8 text-sky-400 shrink-0" />
                 <div>
                   <h2 className="font-bold text-xl sm:text-2xl text-white tracking-tight">Parent Administration Console</h2>
                   <p className="text-xs text-slate-400">Review approvals, create tasks, process payouts &amp; audit history</p>
@@ -1807,24 +1988,28 @@ module.exports = NodeHelper.create({ ... });`}
               {/* Console Navigation Tabs */}
               <div className="flex bg-slate-950/80 border border-white/10 p-1.5 rounded-2xl gap-1.5 overflow-x-auto shrink-0">
               {[
-                { id: "approvals", label: "Task Approvals" },
-                { id: "create_task", label: "Create Chore" },
-                { id: "children", label: "Manage Children" },
-                { id: "payout_engine", label: "Payout & Audit" },
-                { id: "history", label: "Payout Ledger" }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setParentActiveTab(tab.id as any)}
-                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer ${
-                    parentActiveTab === tab.id
-                      ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+                { id: "approvals", label: "Task Approvals", icon: CheckCircle2 },
+                { id: "manage_chores", label: "Manage Chores", icon: SlidersHorizontal },
+                { id: "children", label: "Manage Children", icon: Users },
+                { id: "payout_engine", label: "Payout & Audit", icon: DollarSign },
+                { id: "history", label: "Payout Ledger", icon: History }
+              ].map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setParentActiveTab(tab.id as any)}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap cursor-pointer flex items-center justify-center gap-1.5 ${
+                      parentActiveTab === tab.id
+                        ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Approvals Tab */}
@@ -1836,7 +2021,7 @@ module.exports = NodeHelper.create({ ... });`}
 
                 {tasks.filter((t) => t.category === "monetized" && t.is_completed && !t.is_approved).length === 0 ? (
                   <div className="p-12 text-center bg-white/[0.02] border border-dashed border-white/10 rounded-3xl">
-                    <span className="text-3xl block mb-2">✨</span>
+                    <Sparkles className="w-8 h-8 text-sky-400 mx-auto mb-2" />
                     <h4 className="font-bold text-white text-base mb-1">No monetized chores waiting for approval</h4>
                     <span className="text-xs text-slate-400">All submissions have been reviewed and approved!</span>
                   </div>
@@ -1873,9 +2058,10 @@ module.exports = NodeHelper.create({ ... });`}
                               </button>
                               <button
                                 onClick={() => handleRequestRevision(t.id)}
-                                className="bg-white/10 hover:bg-white/20 text-slate-300 font-semibold py-2.5 px-4 rounded-xl text-xs sm:text-sm transition"
+                                className="bg-white/10 hover:bg-white/20 text-slate-300 font-semibold py-2.5 px-4 rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
                               >
-                                Needs Revision
+                                <RotateCcw className="w-4 h-4 text-amber-400" />
+                                <span>Needs Revision</span>
                               </button>
                             </div>
                           </div>
@@ -1886,171 +2072,725 @@ module.exports = NodeHelper.create({ ... });`}
               </div>
             )}
 
-            {/* Chore Creation Tab with Multi-Child Selection */}
-            {parentActiveTab === "create_task" && (
-              <div className="max-w-2xl bg-slate-900 border border-white/10 rounded-3xl p-6 sm:p-8 space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">Chore Title</label>
-                  <input
-                    type="text"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    onClick={() =>
-                      openVirtualKeyboard("Chore Title", newTitle, "text", (val) =>
-                        setNewTitle(val)
-                      )
-                    }
-                    placeholder="e.g., Wash family car, Clean room, Vacuum living room..."
-                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
-                  />
-                </div>
+            {/* Manage Chores Tab (Create, Edit, Update, Delete & Advanced Schedules) */}
+            {parentActiveTab === "manage_chores" && (
+              <div className="space-y-5">
+                {/* Header & Action Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-white/10 p-4 rounded-2xl">
+                  <div>
+                    <h3 className="font-bold text-white text-base flex items-center gap-2">
+                      <SlidersHorizontal className="w-4 h-4 text-sky-400" />
+                      <span>Family Chores Inventory ({tasks.length})</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Create, edit, reschedule, or remove routine expectations and bounties
+                    </p>
+                  </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">Category</label>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
+                    {/* Filter Pills */}
+                    <div className="flex bg-slate-950 border border-white/10 p-1 rounded-xl gap-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setManageChoresFilter("all")}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                          manageChoresFilter === "all"
+                            ? "bg-sky-500 text-white shadow-sm"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>All ({tasks.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setManageChoresFilter("routine")}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                          manageChoresFilter === "routine"
+                            ? "bg-sky-500 text-white shadow-sm"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Routine ({tasks.filter((t) => t.category === "routine").length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setManageChoresFilter("monetized")}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                          manageChoresFilter === "monetized"
+                            ? "bg-emerald-500 text-white shadow-sm"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        <span>Bounties ({tasks.filter((t) => t.category === "monetized").length})</span>
+                      </button>
+                    </div>
+
+                    {/* "+ Create New Chore" Button */}
                     <button
                       type="button"
-                      onClick={() => setNewCategory("routine")}
-                      className={`flex-1 py-3 rounded-xl text-xs sm:text-sm font-bold border transition ${
-                        newCategory === "routine"
-                          ? "bg-sky-500/20 border-sky-400 text-sky-300"
-                          : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                      onClick={() => setIsCreatingChore(!isCreatingChore)}
+                      className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md ${
+                        isCreatingChore
+                          ? "bg-white/15 text-white border border-white/20"
+                          : "bg-sky-500 hover:bg-sky-400 text-white shadow-sky-500/20"
                       }`}
                     >
-                      Routine Expectation ($0.00)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNewCategory("monetized")}
-                      className={`flex-1 py-3 rounded-xl text-xs sm:text-sm font-bold border transition ${
-                        newCategory === "monetized"
-                          ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
-                          : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      Monetized Bounty ($)
+                      <PlusCircle className="w-4 h-4" />
+                      <span>{isCreatingChore ? "Close Creator" : "New Chore"}</span>
                     </button>
                   </div>
                 </div>
 
-                {newCategory === "monetized" ? (
-                  <div>
-                    <label className="text-xs font-bold text-slate-300 block mb-1.5">Reward Amount ($)</label>
-                    <input
-                      type="number"
-                      step="0.50"
-                      value={newReward}
-                      onChange={(e) => setNewReward(e.target.value)}
-                      onClick={() =>
-                        openVirtualKeyboard("Reward Amount ($)", newReward, "number", (val) =>
-                          setNewReward(val)
-                        )
-                      }
-                      className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-xs font-bold text-slate-300 block mb-1.5">Recurrence Days</label>
-                    <div className="flex gap-1.5">
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dIdx) => {
-                        const sel = newDays.includes(dIdx);
-                        return (
-                          <button
-                            key={day}
-                            type="button"
-                            onClick={() => {
-                              setNewDays((prev) =>
-                                sel ? prev.filter((x) => x !== dIdx) : [...prev, dIdx]
+                {/* Inline Creation Card (Shown when toggled or if chore inventory is empty) */}
+                {(isCreatingChore || tasks.length === 0) && (
+                  <div className="bg-slate-900 border border-sky-500/40 rounded-3xl p-6 sm:p-7 space-y-4 shadow-xl">
+                    <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-sky-400" />
+                        <h4 className="font-bold text-white text-base">Create &amp; Schedule New Chore</h4>
+                      </div>
+                      {tasks.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingChore(false)}
+                          className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                        <ListChecks className="w-3.5 h-3.5 text-sky-400" />
+                        Chore Title
+                      </label>
+                      <input
+                        type="text"
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        onClick={() =>
+                          openVirtualKeyboard("Chore Title", newTitle, "text", (val) =>
+                            setNewTitle(val)
+                          )
+                        }
+                        placeholder="e.g., Vacuum living room, Clean room, Empty dishwasher, Replace air filters..."
+                        className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-1.5">Category</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setNewCategory("routine")}
+                          className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                            newCategory === "routine"
+                              ? "bg-sky-500/20 border-sky-400 text-sky-300"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <Clock className="w-4 h-4" />
+                          Routine Expectation ($0.00)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewCategory("monetized")}
+                          className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                            newCategory === "monetized"
+                              ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <DollarSign className="w-4 h-4" />
+                          Monetized Bounty ($)
+                        </button>
+                      </div>
+                    </div>
+
+                    {newCategory === "monetized" ? (
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                          Reward Bounty Amount ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.50"
+                          value={newReward}
+                          onChange={(e) => setNewReward(e.target.value)}
+                          onClick={() =>
+                            openVirtualKeyboard("Reward Amount ($)", newReward, "number", (val) =>
+                              setNewReward(val)
+                            )
+                          }
+                          className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer font-mono"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                            Recurrence Frequency &amp; Schedule
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {[
+                              { id: "weekly", label: "Daily / Weekly", icon: Calendar },
+                              { id: "bi_weekly", label: "Every 2 Weeks", icon: Clock },
+                              { id: "every_3_weeks", label: "Every 3 Weeks", icon: Clock },
+                              { id: "twice_a_month", label: "Twice a Month", icon: Calendar },
+                              { id: "monthly", label: "Once a Month", icon: Calendar },
+                              { id: "twice_a_year", label: "Twice a Year", icon: RefreshCw },
+                              { id: "yearly", label: "Once a Year", icon: Sparkles }
+                            ].map((opt) => {
+                              const OptIcon = opt.icon;
+                              const isSel = newFrequency === opt.id;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => setNewFrequency(opt.id)}
+                                  className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    isSel
+                                      ? "bg-sky-500/20 border-sky-400 text-sky-200 shadow-sm"
+                                      : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  <OptIcon className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{opt.label}</span>
+                                </button>
                               );
-                            }}
-                            className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition ${
-                              sel
-                                ? "bg-sky-600 border-sky-400 text-white"
-                                : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300"
-                            }`}
+                            })}
+                          </div>
+                        </div>
+
+                        {newFrequency === "weekly" ? (
+                          <div>
+                            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Active Days of Week</label>
+                            <div className="flex gap-1.5">
+                              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dIdx) => {
+                                const sel = newDays.includes(dIdx);
+                                return (
+                                  <button
+                                    key={day}
+                                    type="button"
+                                    onClick={() => {
+                                      setNewDays((prev) =>
+                                        sel ? prev.filter((x) => x !== dIdx) : [...prev, dIdx]
+                                      );
+                                    }}
+                                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                                      sel
+                                        ? "bg-sky-600 border-sky-400 text-white"
+                                        : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300"
+                                    }`}
+                                  >
+                                    {day}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl bg-sky-950/30 border border-sky-500/20 text-xs text-sky-300 flex items-center gap-2">
+                            <Info className="w-4 h-4 shrink-0 text-sky-400" />
+                            <span>
+                              {newFrequency === "bi_weekly" && "Resets 14 days after completion for regular bi-weekly tasks."}
+                              {newFrequency === "every_3_weeks" && "Resets 21 days after completion for rotating 3-week chore cycles."}
+                              {newFrequency === "twice_a_month" && "Resets twice a month (on the 1st and 16th of each calendar month)."}
+                              {newFrequency === "monthly" && "Resets automatically at the start of each calendar month on the 1st."}
+                              {newFrequency === "twice_a_year" && "Resets every 6 months (January 1st & July 1st) for semi-annual chores."}
+                              {newFrequency === "yearly" && "Resets once a year on January 1st for annual home maintenance."}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Multi-Child Assignment Chips */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-sky-400" />
+                          Assign Chore To
+                        </label>
+                        <span className="text-[11px] text-slate-400">Select one or multiple children</span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {/* Up For Grabs */}
+                        <button
+                          type="button"
+                          onClick={() => setNewAssignedTos(["up_for_grabs"])}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                            newAssignedTos.includes("up_for_grabs")
+                              ? "bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20"
+                              : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Up For Grabs (Open Bounty)</span>
+                        </button>
+
+                        {/* Each Child Chip */}
+                        {profiles.map((p) => {
+                          const isSel = newAssignedTos.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                let updated = newAssignedTos.filter((x) => x !== "up_for_grabs");
+                                if (updated.includes(p.id)) {
+                                  updated = updated.filter((x) => x !== p.id);
+                                } else {
+                                  updated.push(p.id);
+                                }
+                                if (updated.length === 0) {
+                                  updated = ["up_for_grabs"];
+                                }
+                                setNewAssignedTos(updated);
+                              }}
+                              className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                                isSel
+                                  ? "bg-sky-600/30 border-sky-400 text-sky-200 shadow-md shadow-sky-600/20"
+                                  : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
+                              }`}
+                            >
+                              {isSel ? (
+                                <Check className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                              ) : (
+                                <Plus className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              )}
+                              <User className="w-3.5 h-3.5 text-sky-400" />
+                              <span>{p.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {profiles.length > 1 && (
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setNewAssignedTos(profiles.map((p) => p.id))}
+                            className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 py-1 px-2.5 rounded-lg bg-white/5 border border-white/10 cursor-pointer flex items-center gap-1"
                           >
-                            {day}
+                            <Users className="w-3 h-3" />
+                            <span>Assign to All Children ({profiles.length})</span>
                           </button>
-                        );
-                      })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleCreateChore}
+                        className="flex-1 bg-sky-500 hover:bg-sky-400 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition active:scale-95 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Publish Chore</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingChore(false)}
+                        className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold text-xs transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* Multi-Child Assignment Chips */}
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-xs font-bold text-slate-300">Assign Chore To</label>
-                    <span className="text-[11px] text-slate-400">Select one or multiple children</span>
-                  </div>
+                {/* Chores Inventory List */}
+                <div className="space-y-3">
+                  {(() => {
+                    let filtered = tasks;
+                    if (manageChoresFilter === "routine") {
+                      filtered = tasks.filter((t) => t.category === "routine");
+                    } else if (manageChoresFilter === "monetized") {
+                      filtered = tasks.filter((t) => t.category === "monetized");
+                    }
 
-                  <div className="flex flex-wrap gap-2">
-                    {/* Up For Grabs */}
-                    <button
-                      type="button"
-                      onClick={() => setNewAssignedTos(["up_for_grabs"])}
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
-                        newAssignedTos.includes("up_for_grabs")
-                          ? "bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20"
-                          : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <span>⚡</span> Up For Grabs (Open Bounty)
-                    </button>
-
-                    {/* Each Child Chip */}
-                    {profiles.map((p) => {
-                      const isSel = newAssignedTos.includes(p.id);
+                    if (filtered.length === 0) {
                       return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            let updated = newAssignedTos.filter((x) => x !== "up_for_grabs");
-                            if (updated.includes(p.id)) {
-                              updated = updated.filter((x) => x !== p.id);
-                            } else {
-                              updated.push(p.id);
-                            }
-                            if (updated.length === 0) {
-                              updated = ["up_for_grabs"];
-                            }
-                            setNewAssignedTos(updated);
-                          }}
-                          className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
-                            isSel
-                              ? "bg-sky-600/30 border-sky-400 text-sky-200 shadow-md shadow-sky-600/20"
-                              : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
-                          }`}
-                        >
-                          <span>{isSel ? "✓" : "+"}</span>
-                          <span>👤 {p.name}</span>
-                        </button>
+                        <div className="p-12 text-center bg-white/[0.02] border border-dashed border-white/10 rounded-3xl">
+                          <Sparkles className="w-8 h-8 text-sky-400 mx-auto mb-2" />
+                          <h4 className="font-bold text-white text-base mb-1">No chores found for this filter</h4>
+                          <span className="text-xs text-slate-400 block mb-3">
+                            Click "+ New Chore" above to add your first chore.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsCreatingChore(true)}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 text-white font-bold text-xs shadow-md cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Create Chore
+                          </button>
+                        </div>
                       );
-                    })}
-                  </div>
+                    }
 
-                  {profiles.length > 1 && (
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setNewAssignedTos(profiles.map((p) => p.id))}
-                        className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 py-1 px-2.5 rounded-lg bg-white/5 border border-white/10 cursor-pointer"
-                      >
-                        👥 Assign to All Children ({profiles.length})
-                      </button>
-                    </div>
-                  )}
+                    return filtered.map((task) => {
+                      const isEditing = editingTaskId === task.id && editingChoreDraft;
+                      const isRoutine = task.category === "routine";
+                      const assignedChild = profiles.find((p) => p.id === task.assigned_to);
+
+                      if (isEditing && editingChoreDraft) {
+                        return (
+                          <div
+                            key={task.id}
+                            className="p-5 rounded-2xl bg-slate-900 border-2 border-sky-400 space-y-4 shadow-xl"
+                          >
+                            <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
+                              <span className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
+                                <Edit3 className="w-4 h-4" />
+                                Editing Chore: {task.title}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTaskId(null);
+                                  setEditingChoreDraft(null);
+                                }}
+                                className="text-slate-400 hover:text-white transition cursor-pointer"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-300 block mb-1">Chore Title</label>
+                              <input
+                                type="text"
+                                value={editingChoreDraft.title}
+                                onChange={(e) =>
+                                  setEditingChoreDraft((prev) => prev ? { ...prev, title: e.target.value } : null)
+                                }
+                                onClick={() =>
+                                  openVirtualKeyboard("Edit Title", editingChoreDraft.title, "text", (val) =>
+                                    setEditingChoreDraft((prev) => prev ? { ...prev, title: val } : null)
+                                  )
+                                }
+                                className="w-full bg-slate-950 border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
+                              />
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingChoreDraft((prev) => prev ? { ...prev, category: "routine" } : null)
+                                }
+                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                  editingChoreDraft.category === "routine"
+                                    ? "bg-sky-500/20 border-sky-400 text-sky-300"
+                                    : "bg-white/5 border-white/10 text-slate-400"
+                                }`}
+                              >
+                                <Clock className="w-3.5 h-3.5" />
+                                Routine Expectation
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingChoreDraft((prev) => prev ? { ...prev, category: "monetized" } : null)
+                                }
+                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                  editingChoreDraft.category === "monetized"
+                                    ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
+                                    : "bg-white/5 border-white/10 text-slate-400"
+                                }`}
+                              >
+                                <DollarSign className="w-3.5 h-3.5" />
+                                Monetized Bounty
+                              </button>
+                            </div>
+
+                            {editingChoreDraft.category === "routine" ? (
+                              <div className="space-y-2.5">
+                                <label className="text-xs font-bold text-slate-300 block">Recurrence Schedule</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                                  {[
+                                    { id: "weekly", label: "Daily / Weekly" },
+                                    { id: "bi_weekly", label: "Every 2 Weeks" },
+                                    { id: "every_3_weeks", label: "Every 3 Weeks" },
+                                    { id: "twice_a_month", label: "Twice a Month" },
+                                    { id: "monthly", label: "Once a Month" },
+                                    { id: "twice_a_year", label: "Twice a Year" },
+                                    { id: "yearly", label: "Once a Year" }
+                                  ].map((opt) => (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() =>
+                                        setEditingChoreDraft((prev) => prev ? { ...prev, frequency: opt.id } : null)
+                                      }
+                                      className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                                        editingChoreDraft.frequency === opt.id
+                                          ? "bg-sky-500/20 border-sky-400 text-sky-200"
+                                          : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {editingChoreDraft.frequency === "weekly" ? (
+                                  <div className="flex gap-1 pt-1">
+                                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dIdx) => {
+                                      const sel = editingChoreDraft.days_of_week.includes(dIdx);
+                                      return (
+                                        <button
+                                          key={day}
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingChoreDraft((prev) => {
+                                              if (!prev) return null;
+                                              const updated = sel
+                                                ? prev.days_of_week.filter((x) => x !== dIdx)
+                                                : [...prev.days_of_week, dIdx];
+                                              return { ...prev, days_of_week: updated };
+                                            });
+                                          }}
+                                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                                            sel
+                                              ? "bg-sky-600 border-sky-400 text-white"
+                                              : "bg-white/5 border-white/10 text-slate-500"
+                                          }`}
+                                        >
+                                          {day}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="p-2.5 rounded-xl bg-sky-950/30 border border-sky-500/20 text-xs text-sky-300">
+                                    {editingChoreDraft.frequency === "bi_weekly" && "Resets 14 days after completion for bi-weekly tasks."}
+                                    {editingChoreDraft.frequency === "every_3_weeks" && "Resets 21 days after completion for 3-week chore cycles."}
+                                    {editingChoreDraft.frequency === "twice_a_month" && "Resets on the 1st and 16th of each calendar month."}
+                                    {editingChoreDraft.frequency === "monthly" && "Resets automatically on the 1st of every calendar month."}
+                                    {editingChoreDraft.frequency === "twice_a_year" && "Resets every 6 months (Jan 1 & Jul 1) for semi-annual chores."}
+                                    {editingChoreDraft.frequency === "yearly" && "Resets once a year on January 1st for annual maintenance."}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <label className="text-xs font-bold text-slate-300 block mb-1">Reward Bounty ($)</label>
+                                <input
+                                  type="number"
+                                  step="0.50"
+                                  value={editingChoreDraft.reward_amount}
+                                  onChange={(e) =>
+                                    setEditingChoreDraft((prev) => prev ? { ...prev, reward_amount: e.target.value } : null)
+                                  }
+                                  onClick={() =>
+                                    openVirtualKeyboard("Reward Amount ($)", editingChoreDraft.reward_amount, "number", (val) =>
+                                      setEditingChoreDraft((prev) => prev ? { ...prev, reward_amount: val } : null)
+                                    )
+                                  }
+                                  className="w-full bg-slate-950 border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer font-mono"
+                                />
+                              </div>
+                            )}
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-300 block mb-1">Assigned Child</label>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setEditingChoreDraft((prev) => prev ? { ...prev, assigned_to: "up_for_grabs" } : null)
+                                  }
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                                    editingChoreDraft.assigned_to === "up_for_grabs"
+                                      ? "bg-purple-600/30 border-purple-400 text-purple-200"
+                                      : "bg-slate-950 border-white/10 text-slate-400"
+                                  }`}
+                                >
+                                  <Zap className="w-3.5 h-3.5 text-amber-300" />
+                                  <span>Up For Grabs</span>
+                                </button>
+                                {profiles.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setEditingChoreDraft((prev) => prev ? { ...prev, assigned_to: p.id } : null)
+                                    }
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                                      editingChoreDraft.assigned_to === p.id
+                                        ? "bg-sky-600/30 border-sky-400 text-sky-200"
+                                        : "bg-slate-950 border-white/10 text-slate-400"
+                                    }`}
+                                  >
+                                    <User className="w-3.5 h-3.5 text-sky-400" />
+                                    <span>{p.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateChore({
+                                    id: task.id,
+                                    title: editingChoreDraft.title,
+                                    category: editingChoreDraft.category,
+                                    frequency: editingChoreDraft.frequency,
+                                    days_of_week: editingChoreDraft.days_of_week,
+                                    reward_amount: parseFloat(editingChoreDraft.reward_amount) || 0,
+                                    assigned_to: editingChoreDraft.assigned_to
+                                  })
+                                }
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition shadow-md cursor-pointer"
+                              >
+                                <Check className="w-4 h-4" />
+                                <span>Save Changes</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTaskId(null);
+                                  setEditingChoreDraft(null);
+                                }}
+                                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold text-xs transition cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={task.id}
+                          className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-white/10 flex flex-col justify-between gap-3 shadow-md hover:border-white/20 transition"
+                        >
+                          <div className="flex justify-between items-start gap-3">
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="font-bold text-white text-base leading-snug">{task.title}</h4>
+                                {isRoutine ? (
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                    <Clock className="w-3 h-3 text-sky-400" />
+                                    <span>{getRecurrenceLabel(task.recurrence)}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-mono flex items-center gap-1 shrink-0">
+                                    <DollarSign className="w-3 h-3 text-emerald-400" />
+                                    <span>${task.reward_amount.toFixed(2)} Bounty</span>
+                                  </span>
+                                )}
+
+                                {!isRoutine && task.is_completed && (
+                                  task.is_approved ? (
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500 text-emerald-400 shrink-0 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Approved
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500 text-amber-400 shrink-0 flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      Needs Approval
+                                    </span>
+                                  )
+                                )}
+                              </div>
+
+                              <div className="text-xs text-slate-400 flex flex-wrap items-center gap-3 pt-1">
+                                <span className="flex items-center gap-1">
+                                  {task.assigned_to === "up_for_grabs" ? (
+                                    <>
+                                      <Zap className="w-3.5 h-3.5 text-amber-300" />
+                                      <strong className="text-purple-300">Up For Grabs</strong>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <User className="w-3.5 h-3.5 text-sky-400" />
+                                      <span>Assigned to: <strong className="text-sky-300">{assignedChild?.name || "Unassigned"}</strong></span>
+                                    </>
+                                  )}
+                                </span>
+
+                                <span className="flex items-center gap-1 text-slate-400">
+                                  <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>{task.notes.length} {task.notes.length === 1 ? "note" : "notes"}</span>
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTaskId(task.id);
+                                  setEditingChoreDraft({
+                                    title: task.title,
+                                    category: task.category,
+                                    frequency: task.recurrence?.frequency || "weekly",
+                                    days_of_week: task.recurrence?.days_of_week || [0, 1, 2, 3, 4, 5, 6],
+                                    reward_amount: task.reward_amount.toFixed(2),
+                                    assigned_to: task.assigned_to
+                                  });
+                                }}
+                                className="bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer border border-sky-500/30"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+                              {deletingTaskId === task.id ? (
+                                <div className="flex items-center gap-1.5 bg-rose-950/60 border border-rose-500/40 px-2.5 py-1 rounded-xl">
+                                  <span className="text-[11px] font-bold text-rose-300">Delete?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleDeleteChore(task.id);
+                                      setDeletingTaskId(null);
+                                    }}
+                                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-1 rounded-lg text-[11px] flex items-center gap-1 cursor-pointer shadow-sm transition"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>Yes</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingTaskId(null)}
+                                    className="bg-white/10 hover:bg-white/20 text-slate-300 font-bold px-1.5 py-1 rounded-lg text-[11px] cursor-pointer flex items-center transition"
+                                    title="Cancel delete"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingTaskId(task.id)}
+                                  className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer border border-rose-500/20"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Delete</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
-
-                <button
-                  onClick={handleCreateChore}
-                  className="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus className="w-5 h-5" />
-                  Publish Chore ({newAssignedTos.includes("up_for_grabs") ? "1 Open Bounty" : `${newAssignedTos.length} Child Chore${newAssignedTos.length > 1 ? "s" : ""}`})
-                </button>
               </div>
             )}
 
@@ -2060,7 +2800,7 @@ module.exports = NodeHelper.create({ ... });`}
                 {/* Add Child Card */}
                 <div className="bg-slate-900 border border-sky-500/30 rounded-3xl p-5 sm:p-6 space-y-3">
                   <div className="flex items-center gap-2 text-sky-400 font-bold text-sm">
-                    <Plus className="w-4 h-4" />
+                    <UserPlus className="w-4 h-4" />
                     Add a New Child to Tracker
                   </div>
                   <div className="flex gap-2">
@@ -2084,7 +2824,7 @@ module.exports = NodeHelper.create({ ... });`}
                       onClick={handleAddChild}
                       className="bg-sky-500 hover:bg-sky-400 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm transition flex items-center gap-1.5 shadow-md shadow-sky-500/20 cursor-pointer shrink-0"
                     >
-                      <Plus className="w-4 h-4" />
+                      <UserPlus className="w-4 h-4" />
                       Add Child
                     </button>
                   </div>
@@ -2093,7 +2833,8 @@ module.exports = NodeHelper.create({ ... });`}
                 {/* Existing Children List */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center px-1">
-                    <h4 className="text-sm font-bold text-white">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Users className="w-4 h-4 text-sky-400" />
                       Family Children ({profiles.length})
                     </h4>
                     <span className="text-xs text-slate-400">Rename or manage profiles</span>
@@ -2145,7 +2886,7 @@ module.exports = NodeHelper.create({ ... });`}
                                 : "bg-white/10 border-white/20 text-white hover:bg-white/20"
                             }`}
                           >
-                            {isSaved ? <Check className="w-3.5 h-3.5" /> : null}
+                            {isSaved ? <Check className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
                             {isSaved ? "Saved!" : "Save Name"}
                           </button>
 
@@ -2172,11 +2913,14 @@ module.exports = NodeHelper.create({ ... });`}
             {parentActiveTab === "payout_engine" && (
               <div className="max-w-2xl bg-slate-900 border border-white/10 rounded-3xl p-6 sm:p-8 space-y-5">
                 <div className="flex items-center gap-3">
-                  <label className="text-xs font-bold text-slate-300">Select Child:</label>
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 shrink-0">
+                    <User className="w-3.5 h-3.5 text-sky-400" />
+                    Select Child:
+                  </label>
                   <select
                     value={payoutProfileId}
                     onChange={(e) => setPayoutProfileId(e.target.value)}
-                    className="bg-slate-950 border border-white/15 rounded-xl px-4 py-2 text-sm text-white flex-1 focus:outline-none focus:border-sky-400"
+                    className="bg-slate-950 border border-white/15 rounded-xl px-4 py-2 text-sm text-white flex-1 focus:outline-none focus:border-sky-400 cursor-pointer"
                   >
                     {profiles.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -2196,8 +2940,9 @@ module.exports = NodeHelper.create({ ... });`}
                     <>
                       <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-2xl p-5 flex justify-between items-center">
                         <div>
-                          <div className="text-xs font-bold uppercase text-emerald-400">
-                            Verified Total Payout Due
+                          <div className="text-xs font-bold uppercase text-emerald-400 flex items-center gap-1.5">
+                            <DollarSign className="w-4 h-4" />
+                            <span>Verified Total Payout Due</span>
                           </div>
                           <div className="text-xs text-slate-400 mt-0.5">
                             {approved.length} approved chores ready for payout
@@ -2211,7 +2956,7 @@ module.exports = NodeHelper.create({ ... });`}
                       {approved.length > 0 && (
                         <button
                           onClick={handleProcessPayout}
-                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-95"
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-95 cursor-pointer"
                         >
                           <DollarSign className="w-5 h-5" />
                           Process Payout (${total.toFixed(2)}) &amp; Commit to Audit Log
@@ -2228,7 +2973,7 @@ module.exports = NodeHelper.create({ ... });`}
               <div className="max-w-2xl space-y-3">
                 {payouts.length === 0 ? (
                   <div className="p-12 text-center bg-white/[0.02] border border-dashed border-white/10 rounded-3xl">
-                    <span className="text-3xl block mb-2">📜</span>
+                    <History className="w-8 h-8 text-sky-400 mx-auto mb-2" />
                     <h4 className="font-bold text-white text-base mb-1">No payouts processed yet</h4>
                     <span className="text-xs text-slate-400">Processed allowances will appear in this audit log.</span>
                   </div>
@@ -2241,8 +2986,9 @@ module.exports = NodeHelper.create({ ... });`}
                         className="p-4 bg-slate-900 border border-white/10 rounded-2xl flex justify-between items-center text-xs sm:text-sm shadow-md"
                       >
                         <div>
-                          <div className="font-bold text-white text-base">
-                            👤 {prof?.name || rec.profile_id}
+                          <div className="font-bold text-white text-base flex items-center gap-1.5">
+                            <Users className="w-4 h-4 text-sky-400" />
+                            <span>{prof?.name || rec.profile_id}</span>
                           </div>
                           <div className="text-slate-400 text-xs mt-0.5">
                             Ref: <code className="text-sky-300">{rec.id}</code> • {new Date(rec.processed_timestamp).toLocaleDateString()}
@@ -2282,9 +3028,10 @@ module.exports = NodeHelper.create({ ... });`}
               <button
                 type="button"
                 onClick={closeVirtualKeyboard}
-                className="text-xs font-bold text-slate-400 hover:text-white px-3 py-1 bg-white/10 rounded-full cursor-pointer transition"
+                className="text-xs font-bold text-slate-400 hover:text-white px-3 py-1 bg-white/10 rounded-full cursor-pointer transition flex items-center gap-1"
               >
-                ✕ Cancel
+                <X className="w-3.5 h-3.5" />
+                <span>Cancel</span>
               </button>
             </div>
 
@@ -2301,9 +3048,10 @@ module.exports = NodeHelper.create({ ... });`}
                     setVirtualKeyboard((prev) => ({ ...prev, value: "" }));
                     virtualKeyboard.onConfirm("");
                   }}
-                  className="text-xs text-rose-400 hover:text-rose-300 px-2.5 py-1 bg-rose-500/10 rounded-lg cursor-pointer"
+                  className="text-xs text-rose-400 hover:text-rose-300 px-2.5 py-1 bg-rose-500/10 rounded-lg cursor-pointer flex items-center gap-1"
                 >
-                  Clear
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Clear</span>
                 </button>
               )}
             </div>
@@ -2357,7 +3105,19 @@ module.exports = NodeHelper.create({ ... });`}
                               : "bg-white/10 hover:bg-white/20 text-white"
                           }`}
                         >
-                          {key}
+                          {isDone ? (
+                            <span className="flex items-center justify-center gap-1.5">
+                              <Check className="w-4 h-4 stroke-[3]" />
+                              <span>Done</span>
+                            </span>
+                          ) : isDel ? (
+                            <span className="flex items-center justify-center gap-1">
+                              <Delete className="w-4 h-4 text-rose-300" />
+                              <span>Del</span>
+                            </span>
+                          ) : (
+                            key
+                          )}
                         </button>
                       );
                     })}
@@ -2366,9 +3126,10 @@ module.exports = NodeHelper.create({ ... });`}
                 <button
                   type="button"
                   onClick={() => setVirtualKeyboard((prev) => ({ ...prev, mode: "alpha" }))}
-                  className="w-full py-2.5 rounded-xl text-xs font-bold text-purple-300 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 transition cursor-pointer"
+                  className="w-full py-2.5 rounded-xl text-xs font-bold text-purple-300 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 transition cursor-pointer flex items-center justify-center gap-2"
                 >
-                  ⌨ Switch to Full ABC Keyboard
+                  <Keyboard className="w-4 h-4" />
+                  <span>Switch to Full ABC Keyboard</span>
                 </button>
               </div>
             ) : virtualKeyboard.mode === "symbols" ? (
@@ -2423,7 +3184,21 @@ module.exports = NodeHelper.create({ ... });`}
                               : "flex-1 bg-white/10 hover:bg-white/20 text-white"
                           }`}
                         >
-                          {key}
+                          {isDone ? (
+                            <span className="flex items-center justify-center gap-1.5">
+                              <Check className="w-4 h-4 stroke-[3]" />
+                              <span>Done</span>
+                            </span>
+                          ) : isDel ? (
+                            <span className="flex items-center justify-center gap-1">
+                              <Delete className="w-4 h-4 text-rose-300" />
+                              <span>Del</span>
+                            </span>
+                          ) : isSpace ? (
+                            <span>Space</span>
+                          ) : (
+                            key
+                          )}
                         </button>
                       );
                     })}
@@ -2496,7 +3271,21 @@ module.exports = NodeHelper.create({ ... });`}
                               : "flex-1 bg-white/10 hover:bg-white/20 text-white"
                           }`}
                         >
-                          {displayKey}
+                          {isDone ? (
+                            <span className="flex items-center justify-center gap-1.5">
+                              <Check className="w-4 h-4 stroke-[3]" />
+                              <span>Done</span>
+                            </span>
+                          ) : isDel ? (
+                            <span className="flex items-center justify-center gap-1">
+                              <Delete className="w-4 h-4 text-rose-300" />
+                              <span>Del</span>
+                            </span>
+                          ) : isSpace ? (
+                            <span>Space</span>
+                          ) : (
+                            displayKey
+                          )}
                         </button>
                       );
                     })}

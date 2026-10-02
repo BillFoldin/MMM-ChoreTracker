@@ -857,6 +857,25 @@
   margin-top: 6px;
 }
 
+/* Global SVG rules inside module to guarantee crisp rendering across all kiosks and browsers */
+.ct-modal-window svg,
+.ct-admin-tabs svg,
+.ct-tab-btn svg,
+.ct-btn-primary svg,
+.ct-btn-secondary svg,
+.ct-btn-success svg,
+.ct-btn-danger svg,
+.ct-assign-chip svg,
+.ct-badge svg,
+.ct-manage-child-card svg,
+.ct-compact-bar svg,
+.ct-recurrence-chip svg,
+.ct-chore-manage-card svg {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 /* =========================================================================
    Parent Admin Dashboard Tabs & Controls
    ========================================================================= */
@@ -867,20 +886,28 @@
   padding: 6px;
   border-radius: var(--ct-radius-md);
   margin-bottom: 20px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .ct-tab-btn {
   flex: 1;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-radius: var(--ct-radius-sm);
   background: transparent;
   border: none;
   color: var(--ct-text-secondary);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
-  min-height: 48px;
+  min-height: 46px;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .ct-tab-btn.active {
@@ -891,6 +918,183 @@
 
 .ct-tab-btn:active {
   transform: scale(0.97);
+}
+
+/* Recurrence Frequency Options */
+.ct-recurrence-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ct-recurrence-chip {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: var(--ct-radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ct-border);
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.ct-recurrence-chip.selected {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.ct-recurrence-tip {
+  font-size: 12px;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--ct-radius-sm);
+  padding: 8px 12px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Manage Chores Tab */
+.ct-manage-chores-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ct-manage-chores-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ct-filter-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.ct-filter-pill {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--ct-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ct-filter-pill.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.ct-chore-manage-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.15s ease;
+}
+
+.ct-chore-manage-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ct-chore-card-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.ct-chore-card-title-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ct-chore-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.ct-chore-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ct-btn-edit-chore {
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--ct-border);
+  color: #e2e8f0;
+  border-radius: var(--ct-radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.ct-btn-edit-chore:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.ct-btn-delete-chore {
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: rgba(225, 29, 72, 0.15);
+  border: 1px solid rgba(225, 29, 72, 0.35);
+  color: #fda4af;
+  border-radius: var(--ct-radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.ct-btn-delete-chore:hover {
+  background: rgba(225, 29, 72, 0.3);
+  color: #fff;
+}
+
+.ct-chore-inline-edit {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #38bdf8;
+  border-radius: var(--ct-radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
 }
 
 /* Form inputs for Touchscreen */
