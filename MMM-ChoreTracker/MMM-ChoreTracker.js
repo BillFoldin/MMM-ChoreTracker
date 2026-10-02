@@ -30,6 +30,7 @@ Module.register("MMM-ChoreTracker", {
     pollInterval: 60000, // 60s fallback poll
     showCompletedTasks: true,
     allowChildNoteAuthoring: true,
+    choresPerPage: 4,
     databaseDirectory: "data"
   },
 
@@ -39,6 +40,8 @@ Module.register("MMM-ChoreTracker", {
   payoutRecords: [],
   selectedProfileId: null, // active child ID when viewing child chore modal
   childModalTab: "assigned", // "assigned" | "up_for_grabs"
+  childModalPage: 1, // 1-based pagination page for chores list
+  choresPerPage: 4, // Amount of chores per page shown
   activeModal: null, // null | 'child_chores' | 'task_detail' | 'who_completed' | 'pin_pad' | 'parent_panel'
   activeTaskId: null,
   completingTaskId: null,
@@ -864,12 +867,28 @@ Module.register("MMM-ChoreTracker", {
     }
 
     this.profiles.forEach((profile, index) => {
-      const childTasks = self.tasks.filter((t) => t.assigned_to === profile.id);
-      const totalCount = childTasks.length;
-      const doneCount = childTasks.filter((t) =>
+      const allChildTasks = self.tasks.filter((t) => t.assigned_to === profile.id);
+      // Daily Goal tasks: only chores assigned for today or overdue from previous days (upcoming excluded!)
+      const dailyTasks = allChildTasks.filter((t) => {
+        const s = self.getChoreScheduleStatus(t);
+        return s.isToday || s.isOverdue;
+      });
+      const totalCount = dailyTasks.length;
+      const doneCount = dailyTasks.filter((t) =>
         t.category === "routine" ? t.is_completed_today : t.is_completed
       ).length;
       const pendingCount = totalCount - doneCount;
+
+      const overdueCount = dailyTasks.filter((t) => {
+        const s = self.getChoreScheduleStatus(t);
+        const isDone = t.category === "routine" ? Boolean(t.is_completed_today) : Boolean(t.is_completed);
+        return s.isOverdue && !isDone;
+      }).length;
+
+      const upcomingCount = allChildTasks.filter((t) => {
+        const s = self.getChoreScheduleStatus(t);
+        return s.isUpcoming;
+      }).length;
 
       const card = document.createElement("div");
       card.className = "ct-kid-card";
@@ -886,13 +905,25 @@ Module.register("MMM-ChoreTracker", {
       // Status text
       const status = document.createElement("div");
       status.className = "ct-kid-status";
-      if (totalCount === 0) {
-        status.innerText = "No chores";
+      if (overdueCount > 0) {
+        const warnSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+        status.innerHTML = `<span style="color:#ef4444; font-weight:700;">${warnSvg}${overdueCount} Overdue</span> • <span style="color:#94a3b8;">${doneCount}/${totalCount} Goal</span>`;
+      } else if (totalCount === 0) {
+        status.innerText = "No chores today";
       } else if (pendingCount === 0) {
         const checkStarSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#10b981" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
         status.innerHTML = `<span style="color:#10b981;">${checkStarSvg}All ${totalCount} Done!</span>`;
       } else {
         status.innerHTML = `<span style="color:#38bdf8;">${doneCount}/${totalCount} Done</span> • <strong style="color:#f59e0b;">${pendingCount} Due</strong>`;
+      }
+
+      if (upcomingCount > 0) {
+        const upTag = document.createElement("div");
+        upTag.style.fontSize = "9px";
+        upTag.style.color = "#a5b4fc";
+        upTag.style.marginTop = "2px";
+        upTag.innerText = `+${upcomingCount} upcoming tomorrow`;
+        status.appendChild(upTag);
       }
       card.appendChild(status);
 
@@ -903,15 +934,17 @@ Module.register("MMM-ChoreTracker", {
       fill.className = "ct-kid-progress-fill";
       const pct = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
       fill.style.width = `${pct}%`;
+      if (overdueCount > 0) {
+        fill.style.background = "linear-gradient(90deg, #ef4444, #f59e0b)";
+      }
       bar.appendChild(fill);
       card.appendChild(bar);
-
-      // (View chores link removed to save vertical space)
 
       // Clicking opens this child's chores modal
       card.addEventListener("click", function () {
         self.selectedProfileId = profile.id;
         self.childModalTab = "assigned";
+        self.childModalPage = 1;
         self.activeModal = "child_chores";
         self.updateDom(200);
       });
@@ -964,9 +997,152 @@ Module.register("MMM-ChoreTracker", {
   },
 
   /**
+   * Evaluates chore schedule status for a task
+   */
+  getChoreScheduleStatus: function (task) {
+    const now = new Date();
+    const currentDayOfWeek = now.getDay();
+    const tomorrowDayOfWeek = (currentDayOfWeek + 1) % 7;
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+    if (task.category === "monetized") {
+      const isDone = Boolean(task.is_completed);
+      return {
+        isToday: !isDone || task.is_completed,
+        isOverdue: false,
+        isUpcoming: false,
+        isDaily: false,
+        statusLabel: isDone ? "Completed Bounty" : "Active Bounty",
+        dueDetail: "Open Bounty"
+      };
+    }
+
+    const recurrence = task.recurrence;
+    if (!recurrence) {
+      return {
+        isToday: true,
+        isOverdue: false,
+        isUpcoming: false,
+        isDaily: true,
+        statusLabel: "Daily Routine",
+        dueDetail: "Due Today"
+      };
+    }
+
+    const freq = recurrence.frequency || "weekly";
+    const days = recurrence.days_of_week && recurrence.days_of_week.length > 0
+      ? recurrence.days_of_week
+      : [0, 1, 2, 3, 4, 5, 6];
+    const isDaily = freq === "daily" || (freq === "weekly" && days.length === 7);
+
+    if (freq === "weekly" || freq === "daily") {
+      // 1. Assigned for today
+      if (days.includes(currentDayOfWeek)) {
+        return {
+          isToday: true,
+          isOverdue: false,
+          isUpcoming: false,
+          isDaily: isDaily,
+          statusLabel: isDaily ? "Daily Routine" : "Due Today",
+          dueDetail: isDaily ? "Daily" : `Today (${dayNames[currentDayOfWeek]})`
+        };
+      }
+
+      // 2. Completed today
+      if (task.is_completed_today) {
+        return {
+          isToday: true,
+          isOverdue: false,
+          isUpcoming: false,
+          isDaily: isDaily,
+          statusLabel: "Completed Today",
+          dueDetail: "Completed"
+        };
+      }
+
+      // 3. For non-daily weekly tasks: check if past occurrence was left unfinished (Overdue!)
+      if (!isDaily) {
+        let daysAgo = 0;
+        let scheduledDayIndex = -1;
+        for (let i = 1; i <= 7; i++) {
+          const checkDay = (currentDayOfWeek - i + 7) % 7;
+          if (days.includes(checkDay)) {
+            daysAgo = i;
+            scheduledDayIndex = checkDay;
+            break;
+          }
+        }
+
+        if (daysAgo > 0) {
+          const lastScheduledDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+          const lastScheduledDateStr = lastScheduledDate.toISOString().split("T")[0];
+          const isCompletedForLastSchedule = Boolean(
+            task.last_completed_date && task.last_completed_date >= lastScheduledDateStr
+          );
+
+          if (!isCompletedForLastSchedule) {
+            const scheduledDayName = dayNames[scheduledDayIndex];
+            return {
+              isToday: false,
+              isOverdue: true,
+              isUpcoming: false,
+              isDaily: false,
+              statusLabel: "Overdue",
+              dueDetail: `Overdue (Scheduled for ${scheduledDayName})`
+            };
+          }
+        }
+      }
+
+      // 4. Upcoming tomorrow
+      if (days.includes(tomorrowDayOfWeek)) {
+        return {
+          isToday: false,
+          isOverdue: false,
+          isUpcoming: true,
+          isDaily: isDaily,
+          statusLabel: "Upcoming Tomorrow",
+          dueDetail: `Scheduled for tomorrow (${dayNames[tomorrowDayOfWeek]})`
+        };
+      }
+
+      return {
+        isToday: false,
+        isOverdue: false,
+        isUpcoming: false,
+        isDaily: isDaily,
+        statusLabel: "Scheduled",
+        dueDetail: "Scheduled for later"
+      };
+    }
+
+    // Non-weekly routines
+    if (task.is_completed_today) {
+      return {
+        isToday: true,
+        isOverdue: false,
+        isUpcoming: false,
+        isDaily: false,
+        statusLabel: "Completed This Period",
+        dueDetail: "Completed"
+      };
+    }
+
+    const isPastDue = Boolean(task.last_completed_date);
+    return {
+      isToday: !isPastDue,
+      isOverdue: isPastDue,
+      isUpcoming: false,
+      isDaily: false,
+      statusLabel: isPastDue ? "Overdue" : "Due This Period",
+      dueDetail: isPastDue ? "Past Due" : "Due This Period"
+    };
+  },
+
+  /**
    * Child Chores Modal
-   * Triggered when a kid's card/name is clicked on the main screen.
-   * Displays that specific child's items with completion toggles, notes, and bounties.
+   * Displays paginated chores with forward/backward icons, per-page setting,
+   * overdue marked red, and upcoming chores excluded from daily goal.
    */
   buildChildChoresModal: function (childId) {
     const self = this;
@@ -1030,61 +1206,177 @@ Module.register("MMM-ChoreTracker", {
     header.appendChild(closeBtn);
     modal.appendChild(header);
 
-    // Body
+    // Body (Paginated without forced scrolling)
     const body = document.createElement("div");
     body.className = "ct-modal-body";
 
-    // Navigation sub-tabs (Assigned vs Available Bounties) if not purely up_for_grabs
-    if (!isUpForGrabsView) {
-      const tabsBar = document.createElement("div");
-      tabsBar.style.display = "flex";
-      tabsBar.style.gap = "8px";
-      tabsBar.style.marginBottom = "4px";
-
-      const assignedTasksCount = this.tasks.filter((t) => t.assigned_to === childId).length;
-      const openBountiesCount = this.tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length;
-
-      const myBtn = document.createElement("button");
-      myBtn.className = `ct-tab-btn ${this.childModalTab === "assigned" ? "active" : ""}`;
-      myBtn.style.padding = "8px 14px";
-      myBtn.style.minHeight = "40px";
-      myBtn.style.fontSize = "13px";
-      myBtn.innerText = `${childName}'s Tasks (${assignedTasksCount})`;
-      myBtn.addEventListener("click", function () {
-        self.childModalTab = "assigned";
-        self.updateDom(100);
-      });
-      tabsBar.appendChild(myBtn);
-
-      const grabsBtn = document.createElement("button");
-      grabsBtn.className = `ct-tab-btn ${this.childModalTab === "up_for_grabs" ? "active" : ""}`;
-      grabsBtn.style.padding = "8px 14px";
-      grabsBtn.style.minHeight = "40px";
-      grabsBtn.style.fontSize = "13px";
-      const tabBoltSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
-      grabsBtn.innerHTML = `${tabBoltSvg}<span>Up For Grabs (${openBountiesCount})</span>`;
-      grabsBtn.addEventListener("click", function () {
-        self.childModalTab = "up_for_grabs";
-        self.updateDom(100);
-      });
-      tabsBar.appendChild(grabsBtn);
-
-      body.appendChild(tabsBar);
-    }
-
-    // Filter tasks based on view
+    // Filter tasks based on view:
+    // Show chores only assigned for that day + unfinished non-daily tasks (overdue) + upcoming chores the day before
     let targetTasks = [];
     if (isUpForGrabsView || this.childModalTab === "up_for_grabs") {
       targetTasks = this.tasks.filter((t) => t.assigned_to === "up_for_grabs");
     } else {
-      targetTasks = this.tasks.filter((t) => t.assigned_to === childId);
+      const rawTasks = this.tasks.filter((t) => t.assigned_to === childId);
+      targetTasks = rawTasks.filter((t) => {
+        const s = self.getChoreScheduleStatus(t);
+        return s.isToday || s.isOverdue || s.isUpcoming;
+      });
     }
 
-    // Tasks list
+    // Daily Goal tasks: exclude upcoming chores!
+    const dailyGoalTasks = isUpForGrabsView || this.childModalTab === "up_for_grabs"
+      ? []
+      : targetTasks.filter((t) => !self.getChoreScheduleStatus(t).isUpcoming);
+    const dailyGoalTotal = dailyGoalTasks.length;
+    const dailyGoalDone = dailyGoalTasks.filter((t) =>
+      t.category === "routine" ? t.is_completed_today : t.is_completed
+    ).length;
+
+    const overdueCount = targetTasks.filter((t) => {
+      const s = self.getChoreScheduleStatus(t);
+      const isDone = t.category === "routine" ? Boolean(t.is_completed_today) : Boolean(t.is_completed);
+      return s.isOverdue && !isDone;
+    }).length;
+
+    const upcomingCount = targetTasks.filter((t) => self.getChoreScheduleStatus(t).isUpcoming).length;
+
+    // Toolbar (Tabs, Goal / Overdue stats, and Per-Page setting)
+    const toolbar = document.createElement("div");
+    toolbar.style.display = "flex";
+    toolbar.style.flexWrap = "wrap";
+    toolbar.style.alignItems = "center";
+    toolbar.style.justifyContent = "space-between";
+    toolbar.style.gap = "8px";
+    toolbar.style.marginBottom = "4px";
+
+    // Sub-tabs if viewing a specific kid
+    if (!isUpForGrabsView) {
+      const tabsBar = document.createElement("div");
+      tabsBar.style.display = "flex";
+      tabsBar.style.gap = "6px";
+
+      const myBtn = document.createElement("button");
+      myBtn.className = `ct-tab-btn ${this.childModalTab === "assigned" ? "active" : ""}`;
+      myBtn.style.padding = "6px 12px";
+      myBtn.style.minHeight = "36px";
+      myBtn.style.fontSize = "12px";
+      myBtn.innerText = `${childName}'s Tasks (${targetTasks.length})`;
+      myBtn.addEventListener("click", function () {
+        self.childModalTab = "assigned";
+        self.childModalPage = 1;
+        self.updateDom(100);
+      });
+      tabsBar.appendChild(myBtn);
+
+      const openBountiesCount = this.tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length;
+      const grabsBtn = document.createElement("button");
+      grabsBtn.className = `ct-tab-btn ${this.childModalTab === "up_for_grabs" ? "active" : ""}`;
+      grabsBtn.style.padding = "6px 12px";
+      grabsBtn.style.minHeight = "36px";
+      grabsBtn.style.fontSize = "12px";
+      const tabBoltSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
+      grabsBtn.innerHTML = `${tabBoltSvg}<span>Up For Grabs (${openBountiesCount})</span>`;
+      grabsBtn.addEventListener("click", function () {
+        self.childModalTab = "up_for_grabs";
+        self.childModalPage = 1;
+        self.updateDom(100);
+      });
+      tabsBar.appendChild(grabsBtn);
+
+      toolbar.appendChild(tabsBar);
+    }
+
+    // Stats and Per-Page settings container
+    const rightControls = document.createElement("div");
+    rightControls.style.display = "flex";
+    rightControls.style.flexWrap = "wrap";
+    rightControls.style.alignItems = "center";
+    rightControls.style.gap = "8px";
+
+    if (!isUpForGrabsView && this.childModalTab === "assigned") {
+      const goalBadge = document.createElement("span");
+      goalBadge.className = "ct-badge ct-badge-routine";
+      goalBadge.style.padding = "4px 8px";
+      goalBadge.innerHTML = `Daily Goal: ${dailyGoalDone}/${dailyGoalTotal} Done`;
+      rightControls.appendChild(goalBadge);
+
+      if (overdueCount > 0) {
+        const overdueBadge = document.createElement("span");
+        overdueBadge.className = "ct-badge ct-badge-danger";
+        overdueBadge.style.padding = "4px 8px";
+        const alertIconSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+        overdueBadge.innerHTML = `${alertIconSvg}${overdueCount} Overdue`;
+        rightControls.appendChild(overdueBadge);
+      }
+
+      if (upcomingCount > 0) {
+        const upcomingBadge = document.createElement("span");
+        upcomingBadge.className = "ct-badge ct-badge-upcoming";
+        upcomingBadge.style.padding = "4px 8px";
+        upcomingBadge.style.background = "rgba(99, 102, 241, 0.2)";
+        upcomingBadge.style.color = "#a5b4fc";
+        upcomingBadge.style.border = "1px solid rgba(99, 102, 241, 0.4)";
+        const calSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+        upcomingBadge.innerHTML = `${calSvg}${upcomingCount} Tomorrow (Not in goal)`;
+        rightControls.appendChild(upcomingBadge);
+      }
+    }
+
+    // Setting: Chores Per Page Selector
+    const perPageBox = document.createElement("div");
+    perPageBox.className = "ct-per-page-selector";
+    perPageBox.style.display = "flex";
+    perPageBox.style.alignItems = "center";
+    perPageBox.style.gap = "4px";
+    perPageBox.style.background = "rgba(0, 0, 0, 0.4)";
+    perPageBox.style.border = "1px solid rgba(255, 255, 255, 0.12)";
+    perPageBox.style.borderRadius = "8px";
+    perPageBox.style.padding = "3px 6px";
+    perPageBox.style.fontSize = "11px";
+    perPageBox.innerHTML = `<span style="color:#94a3b8; font-weight:600; margin-right:2px;">Per page:</span>`;
+
+    const pageSize = this.choresPerPage || this.config.choresPerPage || 4;
+    [2, 4, 6, 8].forEach((size) => {
+      const btn = document.createElement("button");
+      btn.style.width = "24px";
+      btn.style.height = "24px";
+      btn.style.borderRadius = "6px";
+      btn.style.border = "none";
+      btn.style.fontSize = "11px";
+      btn.style.fontWeight = "bold";
+      btn.style.cursor = "pointer";
+      btn.style.transition = "all 0.15s ease";
+      if (pageSize === size) {
+        btn.style.background = "#0ea5e9";
+        btn.style.color = "#ffffff";
+      } else {
+        btn.style.background = "rgba(255, 255, 255, 0.08)";
+        btn.style.color = "#cbd5e1";
+      }
+      btn.innerText = size;
+      btn.addEventListener("click", function () {
+        self.choresPerPage = size;
+        self.childModalPage = 1;
+        self.updateDom(100);
+      });
+      perPageBox.appendChild(btn);
+    });
+    rightControls.appendChild(perPageBox);
+    toolbar.appendChild(rightControls);
+    body.appendChild(toolbar);
+
+    // Pagination calculations
+    const totalTasksCount = targetTasks.length;
+    const totalPages = Math.max(1, Math.ceil(totalTasksCount / pageSize));
+    this.childModalPage = Math.min(Math.max(1, this.childModalPage || 1), totalPages);
+    const startIndex = (this.childModalPage - 1) * pageSize;
+    const pagedTasks = targetTasks.slice(startIndex, startIndex + pageSize);
+
+    // Tasks list grid
     const tasksList = document.createElement("div");
     tasksList.className = "ct-tasks-grid";
 
-    if (targetTasks.length === 0) {
+    if (totalTasksCount === 0) {
       const empty = document.createElement("div");
       empty.className = "ct-empty-state";
       const emptySparkleSvg = `<svg width="28" height="28" viewBox="0 0 24 24" fill="#10b981" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
@@ -1094,12 +1386,22 @@ Module.register("MMM-ChoreTracker", {
       `;
       tasksList.appendChild(empty);
     } else {
-      targetTasks.forEach((task) => {
+      pagedTasks.forEach((task) => {
         const isRoutine = task.category === "routine";
         const isDone = isRoutine ? Boolean(task.is_completed_today) : Boolean(task.is_completed);
+        const scheduleStatus = self.getChoreScheduleStatus(task);
+        const isOverdue = scheduleStatus.isOverdue && !isDone;
+        const isUpcoming = scheduleStatus.isUpcoming;
 
         const card = document.createElement("div");
-        card.className = `ct-task-card ${isDone ? "completed" : ""}`;
+        card.className = `ct-task-card ${isDone ? "completed" : ""} ${isOverdue ? "ct-task-overdue" : ""} ${isUpcoming ? "ct-task-upcoming" : ""}`;
+        if (isOverdue) {
+          card.style.borderColor = "#ef4444";
+          card.style.background = "rgba(239, 68, 68, 0.12)";
+        } else if (isUpcoming) {
+          card.style.borderColor = "rgba(99, 102, 241, 0.5)";
+          card.style.background = "rgba(99, 102, 241, 0.08)";
+        }
 
         // Top row
         const cardTop = document.createElement("div");
@@ -1108,7 +1410,7 @@ Module.register("MMM-ChoreTracker", {
         const titleGroup = document.createElement("div");
         titleGroup.className = "ct-card-title-group";
 
-        // Title Row: Title + Task Type & Bounty Badge moved onto the SAME title line
+        // Title Row
         const titleRow = document.createElement("div");
         titleRow.className = "ct-card-title-row";
 
@@ -1117,7 +1419,28 @@ Module.register("MMM-ChoreTracker", {
         title.innerText = task.title;
         titleRow.appendChild(title);
 
-        // Category & Bounty Badge (Inline with chore title)
+        // Overdue Badge in Red
+        if (isOverdue) {
+          const overdueBadge = document.createElement("span");
+          overdueBadge.className = "ct-badge ct-badge-danger";
+          const alertIconSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+          overdueBadge.innerHTML = `${alertIconSvg}Overdue`;
+          titleRow.appendChild(overdueBadge);
+        }
+
+        // Upcoming Badge
+        if (isUpcoming) {
+          const upBadge = document.createElement("span");
+          upBadge.className = "ct-badge ct-badge-upcoming";
+          upBadge.style.background = "rgba(99, 102, 241, 0.25)";
+          upBadge.style.color = "#c7d2fe";
+          upBadge.style.border = "1px solid rgba(99, 102, 241, 0.5)";
+          const calSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+          upBadge.innerHTML = `${calSvg}Upcoming Tomorrow`;
+          titleRow.appendChild(upBadge);
+        }
+
+        // Category & Bounty Badge
         const catBadge = document.createElement("span");
         if (isRoutine) {
           catBadge.className = "ct-badge ct-badge-routine";
@@ -1128,7 +1451,7 @@ Module.register("MMM-ChoreTracker", {
         }
         titleRow.appendChild(catBadge);
 
-        // Monetized approval status badge (Inline on title line)
+        // Monetized approval status badge
         if (!isRoutine && task.is_completed) {
           const statusBadge = document.createElement("span");
           if (task.is_approved) {
@@ -1144,6 +1467,26 @@ Module.register("MMM-ChoreTracker", {
         }
 
         titleGroup.appendChild(titleRow);
+
+        // Detail text
+        if (isOverdue) {
+          const detail = document.createElement("div");
+          detail.style.fontSize = "11px";
+          detail.style.color = "#f87171";
+          detail.style.fontWeight = "600";
+          detail.style.marginTop = "2px";
+          detail.innerText = `${scheduleStatus.dueDetail} • Needs completion`;
+          titleGroup.appendChild(detail);
+        } else if (isUpcoming) {
+          const detail = document.createElement("div");
+          detail.style.fontSize = "11px";
+          detail.style.color = "#a5b4fc";
+          detail.style.fontWeight = "500";
+          detail.style.marginTop = "2px";
+          detail.innerText = `${scheduleStatus.dueDetail} • Not in daily goal`;
+          titleGroup.appendChild(detail);
+        }
+
         cardTop.appendChild(titleGroup);
 
         // Complete check button
@@ -1152,9 +1495,12 @@ Module.register("MMM-ChoreTracker", {
         checkBtn.setAttribute("aria-label", "Toggle Complete");
         const checkBtnSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
         checkBtn.innerHTML = isDone ? checkBtnSvg : "";
+        if (isOverdue && !isDone) {
+          checkBtn.style.borderColor = "rgba(239, 68, 68, 0.6)";
+          checkBtn.style.background = "rgba(239, 68, 68, 0.15)";
+        }
         checkBtn.addEventListener("click", function (e) {
           e.stopPropagation();
-          // If task is up_for_grabs or unassigned, and not yet completed, prompt who did it!
           if ((task.assigned_to === "up_for_grabs" || childId === "up_for_grabs" || !task.assigned_to) && !isDone) {
             self.completingTaskId = task.id;
             self.activeModal = "who_completed";
@@ -1180,7 +1526,6 @@ Module.register("MMM-ChoreTracker", {
         notesIndicator.innerHTML = `${noteSvg}<span>${notesCount} ${notesCount === 1 ? "Note" : "Notes"}</span>`;
         cardBottom.appendChild(notesIndicator);
 
-        // Claim button if up_for_grabs and viewed by a specific child
         if (task.assigned_to === "up_for_grabs" && !isUpForGrabsView && childId) {
           const claimBtn = document.createElement("button");
           claimBtn.className = "ct-badge ct-badge-grabs";
@@ -1205,7 +1550,7 @@ Module.register("MMM-ChoreTracker", {
 
         card.appendChild(cardBottom);
 
-        // Touch-scroll protection so dragging down on a touch screen does not trigger opening the card!
+        // Touch-scroll protection
         let touchStartY = 0;
         let isTouchDragging = false;
 
@@ -1224,7 +1569,6 @@ Module.register("MMM-ChoreTracker", {
           }
         }, { passive: true });
 
-        // Clicking card body opens the full detail/notes modal (if not dragging/scrolling)
         card.addEventListener("click", function () {
           if (isTouchDragging) {
             isTouchDragging = false;
@@ -1240,6 +1584,124 @@ Module.register("MMM-ChoreTracker", {
     }
 
     body.appendChild(tasksList);
+
+    // Bottom Pagination Bar with Icons to go Forward and Backward
+    const paginationBar = document.createElement("div");
+    paginationBar.className = "ct-pagination-bar";
+    paginationBar.style.display = "flex";
+    paginationBar.style.alignItems = "center";
+    paginationBar.style.justifyContent = "space-between";
+    paginationBar.style.flexWrap = "wrap";
+    paginationBar.style.gap = "8px";
+    paginationBar.style.paddingTop = "10px";
+    paginationBar.style.borderTop = "1px solid rgba(255, 255, 255, 0.12)";
+    paginationBar.style.marginTop = "auto";
+
+    const navLeft = document.createElement("div");
+    navLeft.style.display = "flex";
+    navLeft.style.alignItems = "center";
+    navLeft.style.gap = "8px";
+
+    // Backward Button with Icon
+    const prevBtn = document.createElement("button");
+    prevBtn.className = "ct-page-btn";
+    prevBtn.style.padding = "6px 12px";
+    prevBtn.style.borderRadius = "8px";
+    prevBtn.style.background = "rgba(255, 255, 255, 0.1)";
+    prevBtn.style.border = "1px solid rgba(255, 255, 255, 0.15)";
+    prevBtn.style.color = "#fff";
+    prevBtn.style.cursor = "pointer";
+    prevBtn.style.display = "flex";
+    prevBtn.style.alignItems = "center";
+    prevBtn.style.gap = "4px";
+    prevBtn.style.fontSize = "12px";
+    prevBtn.style.fontWeight = "bold";
+    if (this.childModalPage <= 1) {
+      prevBtn.style.opacity = "0.3";
+      prevBtn.style.pointerEvents = "none";
+    }
+    const prevSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
+    prevBtn.innerHTML = `${prevSvg}<span>Previous</span>`;
+    prevBtn.addEventListener("click", function () {
+      if (self.childModalPage > 1) {
+        self.childModalPage--;
+        self.updateDom(100);
+      }
+    });
+    navLeft.appendChild(prevBtn);
+
+    // Page indicator
+    const pageLabel = document.createElement("span");
+    pageLabel.style.fontSize = "12px";
+    pageLabel.style.fontWeight = "bold";
+    pageLabel.style.color = "#ffffff";
+    pageLabel.innerHTML = `Page ${this.childModalPage} of ${totalPages} <span style="font-size:11px; color:#94a3b8; font-weight:normal;">(${totalTasksCount} chores)</span>`;
+    navLeft.appendChild(pageLabel);
+
+    // Forward Button with Icon
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "ct-page-btn";
+    nextBtn.style.padding = "6px 12px";
+    nextBtn.style.borderRadius = "8px";
+    nextBtn.style.background = "rgba(255, 255, 255, 0.1)";
+    nextBtn.style.border = "1px solid rgba(255, 255, 255, 0.15)";
+    nextBtn.style.color = "#fff";
+    nextBtn.style.cursor = "pointer";
+    nextBtn.style.display = "flex";
+    nextBtn.style.alignItems = "center";
+    nextBtn.style.gap = "4px";
+    nextBtn.style.fontSize = "12px";
+    nextBtn.style.fontWeight = "bold";
+    if (this.childModalPage >= totalPages) {
+      nextBtn.style.opacity = "0.3";
+      nextBtn.style.pointerEvents = "none";
+    }
+    const nextSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+    nextBtn.innerHTML = `<span>Next</span>${nextSvg}`;
+    nextBtn.addEventListener("click", function () {
+      if (self.childModalPage < totalPages) {
+        self.childModalPage++;
+        self.updateDom(100);
+      }
+    });
+    navLeft.appendChild(nextBtn);
+    paginationBar.appendChild(navLeft);
+
+    // Page numeric buttons
+    if (totalPages > 1) {
+      const pageNumGroup = document.createElement("div");
+      pageNumGroup.style.display = "flex";
+      pageNumGroup.style.alignItems = "center";
+      pageNumGroup.style.gap = "4px";
+
+      for (let p = 1; p <= totalPages; p++) {
+        const pBtn = document.createElement("button");
+        pBtn.style.width = "28px";
+        pBtn.style.height = "28px";
+        pBtn.style.borderRadius = "6px";
+        pBtn.style.border = "none";
+        pBtn.style.fontSize = "12px";
+        pBtn.style.fontWeight = "bold";
+        pBtn.style.cursor = "pointer";
+        if (p === this.childModalPage) {
+          pBtn.style.background = "#0ea5e9";
+          pBtn.style.color = "#fff";
+        } else {
+          pBtn.style.background = "rgba(255, 255, 255, 0.08)";
+          pBtn.style.color = "#cbd5e1";
+        }
+        pBtn.innerText = p;
+        const pageIdx = p;
+        pBtn.addEventListener("click", function () {
+          self.childModalPage = pageIdx;
+          self.updateDom(100);
+        });
+        pageNumGroup.appendChild(pBtn);
+      }
+      paginationBar.appendChild(pageNumGroup);
+    }
+
+    body.appendChild(paginationBar);
     modal.appendChild(body);
     backdrop.appendChild(modal);
 

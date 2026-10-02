@@ -1670,6 +1670,74 @@
 }
 
 /* =========================================================================
+   Pagination & Schedule Status Overdue / Upcoming Styles
+   ========================================================================= */
+.ct-task-card.ct-task-overdue {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.12) !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.25) !important;
+}
+
+.ct-task-card.ct-task-upcoming {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+.ct-badge-overdue {
+  background: rgba(239, 68, 68, 0.25) !important;
+  color: #fca5a5 !important;
+  border: 1px solid #ef4444 !important;
+  font-weight: 800 !important;
+}
+
+.ct-badge-upcoming {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: #c7d2fe !important;
+  border: 1px solid rgba(99, 102, 241, 0.45) !important;
+  font-weight: 700 !important;
+}
+
+.ct-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: auto;
+}
+
+.ct-page-btn {
+  padding: 6px 14px;
+  border-radius: var(--ct-radius-sm);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+
+.ct-page-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #38bdf8;
+}
+
+.ct-page-btn:active {
+  transform: scale(0.96);
+}
+
+.ct-per-page-selector button:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+/* =========================================================================
    Responsive Adjustments for Pi Display Sizes
    ========================================================================= */
 @media (max-width: 600px) {

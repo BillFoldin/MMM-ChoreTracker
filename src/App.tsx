@@ -21,6 +21,7 @@ import {
   Send,
   Trash2,
   ChevronRight,
+  ChevronLeft,
   Info,
   X,
   ArrowLeft,
@@ -72,6 +73,156 @@ function getRecurrenceLabel(recurrence: Recurrence | null): string {
   if (freq === "twice_a_year" || freq === "semi_annual") return "Twice a Year";
   if (freq === "yearly" || freq === "annual") return "Once a Year";
   return freq;
+}
+
+interface ChoreScheduleStatus {
+  isToday: boolean;
+  isOverdue: boolean;
+  isUpcoming: boolean;
+  isDaily: boolean;
+  statusLabel: string;
+  dueDetail: string;
+}
+
+function getChoreScheduleStatus(task: Task, now: Date = new Date()): ChoreScheduleStatus {
+  const currentDayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const tomorrowDayOfWeek = (currentDayOfWeek + 1) % 7;
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  if (task.category === "monetized") {
+    const isDone = Boolean(task.is_completed);
+    return {
+      isToday: !isDone || Boolean(task.is_completed),
+      isOverdue: false,
+      isUpcoming: false,
+      isDaily: false,
+      statusLabel: isDone ? "Completed Bounty" : "Active Bounty",
+      dueDetail: "Open Bounty"
+    };
+  }
+
+  const recurrence = task.recurrence;
+  if (!recurrence) {
+    return {
+      isToday: true,
+      isOverdue: false,
+      isUpcoming: false,
+      isDaily: true,
+      statusLabel: "Daily Routine",
+      dueDetail: "Due Today"
+    };
+  }
+
+  const freq = recurrence.frequency || "weekly";
+  const days = recurrence.days_of_week && recurrence.days_of_week.length > 0
+    ? recurrence.days_of_week
+    : [0, 1, 2, 3, 4, 5, 6];
+  const isDaily = freq === "daily" || (freq === "weekly" && days.length === 7);
+
+  if (freq === "weekly" || freq === "daily") {
+    // 1. Is it assigned for today?
+    if (days.includes(currentDayOfWeek)) {
+      return {
+        isToday: true,
+        isOverdue: false,
+        isUpcoming: false,
+        isDaily,
+        statusLabel: isDaily ? "Daily Routine" : "Due Today",
+        dueDetail: isDaily ? "Daily" : `Today (${dayNames[currentDayOfWeek]})`
+      };
+    }
+
+    // 2. Completed today (e.g. child completed an overdue task earlier today)
+    if (task.is_completed_today) {
+      return {
+        isToday: true,
+        isOverdue: false,
+        isUpcoming: false,
+        isDaily,
+        statusLabel: "Completed Today",
+        dueDetail: "Completed"
+      };
+    }
+
+    // 3. For non-daily weekly tasks: check if there is an unfinished past occurrence (Overdue!)
+    if (!isDaily) {
+      let daysAgo = 0;
+      let scheduledDayIndex = -1;
+      for (let i = 1; i <= 7; i++) {
+        const checkDay = (currentDayOfWeek - i + 7) % 7;
+        if (days.includes(checkDay)) {
+          daysAgo = i;
+          scheduledDayIndex = checkDay;
+          break;
+        }
+      }
+
+      if (daysAgo > 0) {
+        const lastScheduledDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+        const lastScheduledDateStr = lastScheduledDate.toISOString().split("T")[0];
+        const isCompletedForLastSchedule = Boolean(
+          task.last_completed_date && task.last_completed_date >= lastScheduledDateStr
+        );
+
+        if (!isCompletedForLastSchedule) {
+          // Unfinished past task: leave on the list until completed and mark red as overdue!
+          const scheduledDayName = dayNames[scheduledDayIndex];
+          return {
+            isToday: false,
+            isOverdue: true,
+            isUpcoming: false,
+            isDaily: false,
+            statusLabel: "Overdue",
+            dueDetail: `Overdue (Scheduled for ${scheduledDayName})`
+          };
+        }
+      }
+    }
+
+    // 4. Is it upcoming tomorrow (the day before it is scheduled)?
+    if (days.includes(tomorrowDayOfWeek)) {
+      return {
+        isToday: false,
+        isOverdue: false,
+        isUpcoming: true,
+        isDaily,
+        statusLabel: "Upcoming Tomorrow",
+        dueDetail: `Scheduled for tomorrow (${dayNames[tomorrowDayOfWeek]})`
+      };
+    }
+
+    // Otherwise, scheduled for another day in the cycle
+    return {
+      isToday: false,
+      isOverdue: false,
+      isUpcoming: false,
+      isDaily,
+      statusLabel: "Scheduled",
+      dueDetail: "Scheduled for later"
+    };
+  }
+
+  // Non-weekly routines (bi_weekly, every_3_weeks, twice_a_month, monthly, twice_a_year, yearly):
+  if (task.is_completed_today) {
+    return {
+      isToday: true,
+      isOverdue: false,
+      isUpcoming: false,
+      isDaily: false,
+      statusLabel: "Completed This Period",
+      dueDetail: "Completed"
+    };
+  }
+
+  const isPastDue = Boolean(task.last_completed_date);
+  return {
+    isToday: !isPastDue,
+    isOverdue: isPastDue,
+    isUpcoming: false,
+    isDaily: false,
+    statusLabel: isPastDue ? "Overdue" : "Due This Period",
+    dueDetail: isPastDue ? "Past Due" : getRecurrenceLabel(recurrence)
+  };
 }
 
 interface Task {
@@ -275,6 +426,28 @@ export default function App() {
       assigned_to: "child_01",
       recurrence: { frequency: "weekly", days_of_week: [1, 2, 3, 4, 5] },
       last_completed_date: "2026-09-25",
+      is_completed_today: false,
+      notes: []
+    },
+    {
+      id: "task_105",
+      title: "Take Out Recycling & Green Waste",
+      category: "routine",
+      reward_amount: 0.0,
+      assigned_to: "child_01",
+      recurrence: { frequency: "weekly", days_of_week: [4] }, // Thursday (yesterday - unfinished, so OVERDUE)
+      last_completed_date: "2026-09-17",
+      is_completed_today: false,
+      notes: []
+    },
+    {
+      id: "task_106",
+      title: "Dust Shelves & Organize Desk",
+      category: "routine",
+      reward_amount: 0.0,
+      assigned_to: "child_01",
+      recurrence: { frequency: "weekly", days_of_week: [6] }, // Saturday (tomorrow - UPCOMING, not in daily goal)
+      last_completed_date: "2026-09-19",
       is_completed_today: false,
       notes: []
     },
@@ -485,8 +658,34 @@ export default function App() {
   const [showTitleArea, setShowTitleArea] = useState(false);
   const [showCalendarSim, setShowCalendarSim] = useState(true);
 
-  // Summary counts
-  const completedCount = tasks.filter((t) =>
+  // Setting: Amount of chores per page shown (persisted in localStorage)
+  const [choresPerPage, setChoresPerPage] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("ct_chores_per_page");
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if ([2, 4, 6, 8, 10, 12].includes(val)) return val;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return 4; // default 4 per page
+  });
+
+  const [chorePage, setChorePage] = useState<number>(1);
+
+  // Reset page when switching child or tab
+  useEffect(() => {
+    setChorePage(1);
+  }, [selectedChildId, childModalTab]);
+
+  // Summary counts: daily goal across all children (excluding upcoming)
+  const dailyGoalTasksAll = tasks.filter((t) => {
+    if (t.assigned_to === "up_for_grabs") return false;
+    const status = getChoreScheduleStatus(t, currentTime);
+    return status.isToday || status.isOverdue;
+  });
+  const completedCount = dailyGoalTasksAll.filter((t) =>
     t.category === "routine" ? t.is_completed_today : t.is_completed
   ).length;
 
@@ -499,12 +698,52 @@ export default function App() {
   const activeTask = tasks.find((t) => t.id === activeTaskId);
   const completingTask = tasks.find((t) => t.id === completingTaskId);
 
-  // Child's chore tasks list
-  const childTasks = selectedChildId
+  // Child's chore tasks list:
+  // #2: Show chores only assigned for that day + unfinished non-daily tasks until completed (marked red as overdue)
+  // #3: Show upcoming chores the day before scheduled, but do not count them as part of daily goal
+  const rawChildTasks = selectedChildId
     ? selectedChildId === "up_for_grabs" || childModalTab === "up_for_grabs"
       ? tasks.filter((t) => t.assigned_to === "up_for_grabs")
       : tasks.filter((t) => t.assigned_to === selectedChildId)
     : [];
+
+  const childTasks = selectedChildId === "up_for_grabs" || childModalTab === "up_for_grabs"
+    ? rawChildTasks
+    : rawChildTasks.filter((t) => {
+        const status = getChoreScheduleStatus(t, currentTime);
+        return status.isToday || status.isOverdue || status.isUpcoming;
+      });
+
+  // Daily goal tasks for the selected child (excludes upcoming!)
+  const childDailyGoalTasks = selectedChildId === "up_for_grabs" || childModalTab === "up_for_grabs"
+    ? []
+    : childTasks.filter((t) => {
+        const status = getChoreScheduleStatus(t, currentTime);
+        return !status.isUpcoming;
+      });
+
+  const childDailyGoalTotal = childDailyGoalTasks.length;
+  const childDailyGoalDone = childDailyGoalTasks.filter((t) =>
+    t.category === "routine" ? t.is_completed_today : t.is_completed
+  ).length;
+
+  const childOverdueCount = childTasks.filter((t) => {
+    const status = getChoreScheduleStatus(t, currentTime);
+    const isDone = t.category === "routine" ? Boolean(t.is_completed_today) : Boolean(t.is_completed);
+    return status.isOverdue && !isDone;
+  }).length;
+
+  const childUpcomingCount = childTasks.filter((t) => {
+    const status = getChoreScheduleStatus(t, currentTime);
+    return status.isUpcoming;
+  }).length;
+
+  // Pagination calculation
+  const totalChoreCount = childTasks.length;
+  const totalChorePages = Math.max(1, Math.ceil(totalChoreCount / choresPerPage));
+  const validChorePage = Math.min(Math.max(1, chorePage), totalChorePages);
+  const choreStartIndex = (validChorePage - 1) * choresPerPage;
+  const paginatedChildTasks = childTasks.slice(choreStartIndex, choreStartIndex + choresPerPage);
 
   // Toggle complete initiator - checks if task is up for grabs, and if so asks who completed it!
   const handleInitiateComplete = (taskId: string) => {
@@ -1107,14 +1346,30 @@ export default function App() {
                   {/* MAIN SCREEN: KIDS CARDS (NAMES INTEGRATED INTO AVATAR - ULTRA COMPACT) */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-w-3xl mx-auto w-full">
                     {profiles.map((p, idx) => {
-                      const childTasks = tasks.filter((t) => t.assigned_to === p.id);
-                      const total = childTasks.length;
-                      const done = childTasks.filter((t) =>
+                      const childAllTasks = tasks.filter((t) => t.assigned_to === p.id);
+                      // Daily goal: only chores assigned for today or overdue from previous days (upcoming excluded!)
+                      const childDailyTasks = childAllTasks.filter((t) => {
+                        const s = getChoreScheduleStatus(t, currentTime);
+                        return s.isToday || s.isOverdue;
+                      });
+                      const total = childDailyTasks.length;
+                      const done = childDailyTasks.filter((t) =>
                         t.category === "routine" ? t.is_completed_today : t.is_completed
                       ).length;
                       const pending = total - done;
                       const pct = total > 0 ? (done / total) * 100 : 0;
                       const grad = avatarGradients[idx % avatarGradients.length];
+
+                      const overdueCount = childDailyTasks.filter((t) => {
+                        const s = getChoreScheduleStatus(t, currentTime);
+                        const isDone = t.category === "routine" ? Boolean(t.is_completed_today) : Boolean(t.is_completed);
+                        return s.isOverdue && !isDone;
+                      }).length;
+
+                      const upcomingCount = childAllTasks.filter((t) => {
+                        const s = getChoreScheduleStatus(t, currentTime);
+                        return s.isUpcoming;
+                      }).length;
 
                       return (
                         <div
@@ -1124,7 +1379,11 @@ export default function App() {
                             setChildModalTab("assigned");
                             setActiveModal("child_chores");
                           }}
-                          className="group cursor-pointer rounded-xl p-2 sm:p-2.5 border border-white/10 bg-slate-900/90 hover:bg-slate-800/90 hover:border-sky-400 hover:-translate-y-0.5 transition-all duration-150 flex flex-col items-center text-center shadow-md select-none"
+                          className={`group cursor-pointer rounded-xl p-2 sm:p-2.5 border transition-all duration-150 flex flex-col items-center text-center shadow-md select-none ${
+                            overdueCount > 0
+                              ? "border-rose-500/50 bg-rose-950/20 hover:bg-rose-900/30 hover:border-rose-400 hover:-translate-y-0.5"
+                              : "border-white/10 bg-slate-900/90 hover:bg-slate-800/90 hover:border-sky-400 hover:-translate-y-0.5"
+                          }`}
                         >
                           {/* Avatar Circle with Integrated Child Name */}
                           <div
@@ -1133,9 +1392,15 @@ export default function App() {
                             {p.name}
                           </div>
 
-                          <div className="text-[10px] text-slate-400 font-medium mb-1 leading-tight">
-                            {total === 0 ? (
-                              <span>No chores</span>
+                          <div className="text-[10px] text-slate-400 font-medium mb-1 leading-tight w-full">
+                            {overdueCount > 0 ? (
+                              <span className="text-rose-400 font-bold flex items-center justify-center gap-1">
+                                <AlertTriangle className="w-2.5 h-2.5 text-rose-400 shrink-0" />
+                                <span>{overdueCount} Overdue</span>
+                                <span className="text-slate-400 font-normal">• {done}/{total} Goal</span>
+                              </span>
+                            ) : total === 0 ? (
+                              <span>No chores today</span>
                             ) : pending === 0 ? (
                               <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
                                 <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
@@ -1146,12 +1411,22 @@ export default function App() {
                                 <strong className="text-sky-400">{done}/{total} Done</strong> • <span className="text-amber-400 font-semibold">{pending} Due</span>
                               </span>
                             )}
+
+                            {upcomingCount > 0 && (
+                              <span className="text-[9px] text-indigo-300/80 block mt-0.5">
+                                +{upcomingCount} upcoming tomorrow
+                              </span>
+                            )}
                           </div>
 
                           {/* Progress bar */}
                           <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-gradient-to-r from-sky-400 to-emerald-400 rounded-full transition-all duration-300"
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                overdueCount > 0
+                                  ? "bg-gradient-to-r from-rose-500 to-amber-400"
+                                  : "bg-gradient-to-r from-sky-400 to-emerald-400"
+                              }`}
                               style={{ width: `${pct}%` }}
                             />
                           </div>
@@ -1450,45 +1725,95 @@ module.exports = NodeHelper.create({ ... });`}
               </button>
             </div>
 
-            {/* Scrollable Content Body with smooth vertical scrolling */}
-            <div
-              style={{ WebkitOverflowScrolling: "touch", maxHeight: "calc(88vh - 120px)" }}
-              className="p-4 sm:p-6 md:p-7 flex flex-col gap-4 flex-1 overflow-y-auto min-h-0 touch-pan-y overscroll-y-contain"
-            >
-              {/* Navigation Sub-Tabs */}
-              {selectedChildId !== "up_for_grabs" && (
-                <div className="flex gap-2 bg-slate-950/80 border border-white/10 p-1.5 rounded-2xl max-w-lg shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setChildModalTab("assigned")}
-                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                      childModalTab === "assigned"
-                        ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
-                        : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <User className="w-4 h-4 shrink-0" />
-                    <span>{activeChild?.name}'s Tasks ({tasks.filter((t) => t.assigned_to === selectedChildId).length})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChildModalTab("up_for_grabs")}
-                    className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                      childModalTab === "up_for_grabs"
-                        ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
-                        : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <Zap className="w-4 h-4 text-amber-300 shrink-0" />
-                    <span>Available Up For Grabs ({tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length})</span>
-                  </button>
-                </div>
-              )}
+            {/* Paginated Content Body */}
+            <div className="p-4 sm:p-6 md:p-7 flex flex-col justify-between flex-1 min-h-0 overflow-hidden gap-3">
+              {/* Toolbar: Navigation Tabs, Daily Goal & Per-Page Setting */}
+              <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+                {selectedChildId !== "up_for_grabs" && (
+                  <div className="flex gap-2 bg-slate-950/80 border border-white/10 p-1.5 rounded-2xl shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setChildModalTab("assigned")}
+                      className={`py-2 px-3.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        childModalTab === "assigned"
+                          ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <User className="w-4 h-4 shrink-0" />
+                      <span>{activeChild?.name}'s Tasks ({childTasks.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChildModalTab("up_for_grabs")}
+                      className={`py-2 px-3.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        childModalTab === "up_for_grabs"
+                          ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Zap className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span>Available Up For Grabs ({tasks.filter((t) => t.assigned_to === "up_for_grabs" && !t.is_completed).length})</span>
+                    </button>
+                  </div>
+                )}
 
-              {/* Task Items List */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pb-8">
+                {/* Daily Goal & Status Badges */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {childModalTab === "assigned" && selectedChildId !== "up_for_grabs" && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 text-xs font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Daily Goal: {childDailyGoalDone}/{childDailyGoalTotal} Done</span>
+                    </div>
+                  )}
+
+                  {childOverdueCount > 0 && childModalTab === "assigned" && selectedChildId !== "up_for_grabs" && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold animate-pulse">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                      <span>{childOverdueCount} Overdue</span>
+                    </div>
+                  )}
+
+                  {childUpcomingCount > 0 && childModalTab === "assigned" && selectedChildId !== "up_for_grabs" && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-semibold">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>{childUpcomingCount} Upcoming Tomorrow (Not in goal)</span>
+                    </div>
+                  )}
+
+                  {/* Setting: Chores Per Page Shown */}
+                  <div className="flex items-center gap-1.5 bg-slate-950/70 border border-white/10 px-2.5 py-1 rounded-xl text-xs">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="text-slate-300 font-semibold text-[11px] whitespace-nowrap">Per page:</span>
+                    {[2, 4, 6, 8].map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => {
+                          setChoresPerPage(size);
+                          setChorePage(1);
+                          try {
+                            localStorage.setItem("ct_chores_per_page", String(size));
+                          } catch (e) {}
+                        }}
+                        className={`w-7 h-7 rounded-lg font-bold text-xs transition cursor-pointer flex items-center justify-center ${
+                          choresPerPage === size
+                            ? "bg-sky-500 text-white shadow-md shadow-sky-500/30"
+                            : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+                        }`}
+                        title={`Show ${size} chores per page`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Task Items Grid (Paginated, No Scrolling) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 flex-1 content-start overflow-hidden">
                 {childTasks.length === 0 ? (
-                  <div className="col-span-full py-16 text-center border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
+                  <div className="col-span-full py-14 text-center border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
                     <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3">
                       <Sparkles className="w-7 h-7 text-emerald-400" />
                     </div>
@@ -1496,9 +1821,12 @@ module.exports = NodeHelper.create({ ... });`}
                     <p className="text-slate-400 text-sm">All caught up! Great job!</p>
                   </div>
                 ) : (
-                  childTasks.map((task) => {
+                  paginatedChildTasks.map((task) => {
                     const isRoutine = task.category === "routine";
                     const isDone = isRoutine ? Boolean(task.is_completed_today) : Boolean(task.is_completed);
+                    const scheduleStatus = getChoreScheduleStatus(task, currentTime);
+                    const isOverdue = scheduleStatus.isOverdue && !isDone;
+                    const isUpcoming = scheduleStatus.isUpcoming;
 
                     return (
                       <div
@@ -1507,27 +1835,59 @@ module.exports = NodeHelper.create({ ... });`}
                           setActiveTaskId(task.id);
                           setActiveModal("task_detail");
                         }}
-                        className={`group cursor-pointer rounded-2xl p-4 sm:p-4.5 border transition-all flex flex-col justify-between gap-3 select-none touch-pan-y ${
+                        className={`group cursor-pointer rounded-2xl p-4 sm:p-4.5 border transition-all flex flex-col justify-between gap-2.5 select-none ${
                           isDone
                             ? "bg-emerald-950/20 border-emerald-500/40 opacity-80"
+                            : isOverdue
+                            ? "bg-rose-950/35 border-rose-500 hover:border-rose-400 hover:bg-rose-900/40 ring-1 ring-rose-500/50 shadow-lg shadow-rose-950/40"
+                            : isUpcoming
+                            ? "bg-indigo-950/25 border-indigo-500/40 hover:border-indigo-400 hover:bg-indigo-900/30 shadow-md"
                             : "bg-slate-900 border-white/10 hover:border-sky-400 hover:bg-slate-850 shadow-lg"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex-1 min-w-0">
-                            {/* Title line with inline type of task & bounty badges */}
+                            {/* Title line with inline type of task, Overdue / Upcoming badges */}
                             <div className="flex flex-wrap items-center gap-2">
                               <h4
-                                className={`font-bold text-base leading-snug text-white ${
-                                  isDone ? "line-through text-slate-400" : ""
+                                className={`font-bold text-base leading-snug ${
+                                  isDone
+                                    ? "line-through text-slate-400"
+                                    : isOverdue
+                                    ? "text-rose-100"
+                                    : "text-white"
                                 }`}
                               >
                                 {task.title}
                               </h4>
 
+                              {/* Overdue Badge in Red */}
+                              {isOverdue && (
+                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-md bg-rose-600/30 border border-rose-500 text-rose-300 uppercase tracking-wider shrink-0 flex items-center gap-1 shadow-sm">
+                                  <AlertTriangle className="w-3 h-3 text-rose-400" />
+                                  <span>Overdue</span>
+                                </span>
+                              )}
+
+                              {/* Upcoming Tomorrow Badge */}
+                              {isUpcoming && (
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/25 border border-indigo-500/50 text-indigo-300 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3 text-indigo-400" />
+                                  <span>Upcoming Tomorrow</span>
+                                </span>
+                              )}
+
                               {isRoutine ? (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-sky-400" />
+                                <span
+                                  className={`text-[11px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider shrink-0 flex items-center gap-1 ${
+                                    isOverdue
+                                      ? "bg-rose-500/20 border-rose-500/30 text-rose-300"
+                                      : isUpcoming
+                                      ? "bg-indigo-500/20 border-indigo-500/30 text-indigo-300"
+                                      : "bg-sky-500/15 border-sky-500/30 text-sky-400"
+                                  }`}
+                                >
+                                  <Clock className="w-3 h-3" />
                                   <span>{getRecurrenceLabel(task.recurrence)}</span>
                                 </span>
                               ) : (
@@ -1551,6 +1911,21 @@ module.exports = NodeHelper.create({ ... });`}
                                 )
                               )}
                             </div>
+
+                            {/* Overdue / Upcoming helper subtext */}
+                            {isOverdue && (
+                              <p className="text-[11px] text-rose-300 font-semibold mt-1 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3 text-rose-400 shrink-0" />
+                                <span>{scheduleStatus.dueDetail} • Complete to clear overdue</span>
+                              </p>
+                            )}
+
+                            {isUpcoming && (
+                              <p className="text-[11px] text-indigo-300/90 font-medium mt-1 flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-indigo-400 shrink-0" />
+                                <span>{scheduleStatus.dueDetail} • Not in today's daily goal</span>
+                              </p>
+                            )}
                           </div>
 
                           {/* Touch Complete Circle Button */}
@@ -1563,6 +1938,8 @@ module.exports = NodeHelper.create({ ... });`}
                             className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-xl font-bold transition shrink-0 cursor-pointer ${
                               isDone
                                 ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+                                : isOverdue
+                                ? "border-rose-500/60 hover:border-rose-400 bg-rose-500/15 text-transparent hover:text-rose-200"
                                 : "border-white/20 hover:border-sky-400 bg-white/5 text-transparent hover:text-white/40"
                             }`}
                             title={isDone ? "Mark incomplete" : "Mark completed"}
@@ -1570,17 +1947,17 @@ module.exports = NodeHelper.create({ ... });`}
                             {isDone ? (
                               <Check className="w-6 h-6 stroke-[3]" />
                             ) : (
-                              <span className="w-4 h-4 rounded-full border border-white/20" />
+                              <span className={`w-4 h-4 rounded-full border ${isOverdue ? "border-rose-400/50" : "border-white/20"}`} />
                             )}
                           </button>
                         </div>
 
-                        <div className="flex items-center justify-between text-xs text-slate-400 pt-2.5 border-t border-white/5">
-                          <span className="flex items-center gap-1.5 font-medium text-sky-300">
-                            <MessageSquare className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                        <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/5">
+                          <span className={`flex items-center gap-1.5 font-medium ${isOverdue ? "text-rose-300" : isUpcoming ? "text-indigo-300" : "text-sky-300"}`}>
+                            <MessageSquare className="w-3.5 h-3.5 shrink-0" />
                             <span>{task.notes.length} {task.notes.length === 1 ? "note" : "notes"}</span>
                           </span>
-                          <span className="text-sky-400 font-semibold group-hover:translate-x-0.5 transition flex items-center gap-1">
+                          <span className={`font-semibold group-hover:translate-x-0.5 transition flex items-center gap-1 ${isOverdue ? "text-rose-400" : isUpcoming ? "text-indigo-400" : "text-sky-400"}`}>
                             <span>Details &amp; Notes</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </span>
@@ -1588,6 +1965,66 @@ module.exports = NodeHelper.create({ ... });`}
                       </div>
                     );
                   })
+                )}
+              </div>
+
+              {/* Bottom Pagination Bar with Forward/Backward Icons */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10 shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setChorePage((p) => Math.max(1, p - 1))}
+                    disabled={validChorePage <= 1}
+                    className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none text-white font-bold text-xs sm:text-sm transition cursor-pointer border border-white/10"
+                    title="Previous page"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-sky-400" />
+                    <span>Previous</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5 px-2">
+                    <span className="text-xs sm:text-sm font-bold text-white">
+                      Page {validChorePage} of {totalChorePages}
+                    </span>
+                    {totalChoreCount > 0 && (
+                      <span className="text-[11px] text-slate-400">
+                        ({choreStartIndex + 1}–{Math.min(choreStartIndex + choresPerPage, totalChoreCount)} of {totalChoreCount})
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setChorePage((p) => Math.min(totalChorePages, p + 1))}
+                    disabled={validChorePage >= totalChorePages}
+                    className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none text-white font-bold text-xs sm:text-sm transition cursor-pointer border border-white/10"
+                    title="Next page"
+                    aria-label="Next page"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-4 h-4 text-sky-400" />
+                  </button>
+                </div>
+
+                {/* Direct Page Jump Buttons */}
+                {totalChorePages > 1 && (
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalChorePages }, (_, i) => i + 1).map((pg) => (
+                      <button
+                        key={pg}
+                        type="button"
+                        onClick={() => setChorePage(pg)}
+                        className={`w-8 h-8 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
+                          validChorePage === pg
+                            ? "bg-sky-500 text-white shadow-sm shadow-sky-500/40"
+                            : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/15"
+                        }`}
+                      >
+                        {pg}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -1970,17 +2407,46 @@ module.exports = NodeHelper.create({ ... });`}
                   <p className="text-xs text-slate-400">Review approvals, create tasks, process payouts &amp; audit history</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsParentUnlocked(false);
-                  setActiveModal(null);
-                }}
-                className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 transition shadow-lg shadow-purple-600/20 cursor-pointer"
-              >
-                <Lock className="w-4 h-4" />
-                Lock &amp; Exit
-              </button>
+              <div className="flex items-center gap-3">
+                {/* Setting: Chores Per Page Shown */}
+                <div className="flex items-center gap-1.5 bg-slate-950/70 border border-white/10 px-3 py-1.5 rounded-xl text-xs">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-slate-300 font-semibold text-xs whitespace-nowrap">Chores Per Page:</span>
+                  {[2, 4, 6, 8].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => {
+                        setChoresPerPage(size);
+                        setChorePage(1);
+                        try {
+                          localStorage.setItem("ct_chores_per_page", String(size));
+                        } catch (e) {}
+                      }}
+                      className={`w-7 h-7 rounded-lg font-bold text-xs transition cursor-pointer flex items-center justify-center ${
+                        choresPerPage === size
+                          ? "bg-sky-500 text-white shadow-md shadow-sky-500/30"
+                          : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+                      }`}
+                      title={`Show ${size} chores per page`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsParentUnlocked(false);
+                    setActiveModal(null);
+                  }}
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 transition shadow-lg shadow-purple-600/20 cursor-pointer"
+                >
+                  <Lock className="w-4 h-4" />
+                  Lock &amp; Exit
+                </button>
+              </div>
             </div>
 
             {/* Scrollable Body */}
