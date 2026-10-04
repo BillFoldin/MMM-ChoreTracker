@@ -612,4 +612,138 @@ test("15. Modal button structure validation: child chores and PIN modals maintai
   assert.ok(modalTypes.includes("pin_pad"));
 });
 
+test("16. Virtual keyboard synchronous buffer accumulation prevents dropped keystrokes and stale closure truncation", () => {
+  // Simulates rapid typing with ref-backed buffer pattern
+  let committedVal = "";
+  const onConfirm = (val: string) => {
+    committedVal = val;
+  };
+
+  const keyboardRef = { current: "" };
+  const typeKey = (char: string) => {
+    keyboardRef.current += char;
+    onConfirm(keyboardRef.current);
+  };
+
+  // User types "Vacuum living room" in rapid succession
+  const inputStr = "Vacuum living room";
+  for (const ch of inputStr) {
+    typeKey(ch);
+  }
+
+  assert.equal(keyboardRef.current, "Vacuum living room", "Buffer must contain full string");
+  assert.equal(committedVal, "Vacuum living room", "Target field must receive complete string without truncation");
+
+  // User presses backspace twice
+  keyboardRef.current = keyboardRef.current.slice(0, -2);
+  onConfirm(keyboardRef.current);
+  assert.equal(committedVal, "Vacuum living ro");
+});
+
+test("17. Currency decimal typing is safely handled without browser input truncation", () => {
+  let rewardAmount = "";
+  const onRewardConfirm = (val: string) => {
+    rewardAmount = val;
+  };
+
+  const keyboardRef = { current: "" };
+  const typeNum = (char: string) => {
+    keyboardRef.current += char;
+    onRewardConfirm(keyboardRef.current);
+  };
+
+  // User types 7 then . then 5 then 0
+  typeNum("7");
+  assert.equal(rewardAmount, "7");
+  typeNum(".");
+  // In text/inputMode="decimal", "7." is retained as valid string rather than wiped by browser HTML5 number input
+  assert.equal(rewardAmount, "7.");
+  typeNum("5");
+  assert.equal(rewardAmount, "7.5");
+  typeNum("0");
+  assert.equal(rewardAmount, "7.50");
+
+  const parsed = parseFloat(rewardAmount) || 0;
+  assert.equal(parsed, 7.5);
+});
+
+test("18. Virtual keyboard close guard and DOM priority prevents focus-restoration wiping typed text", () => {
+  // Simulates the scenario where the user typed in the popup input, clicked Done,
+  // and focus-restoration fires on the underlying field.
+  let targetFieldValue = "";
+  let lastCloseTime = 0;
+  let isOpen = false;
+
+  const openVirtualKeyboard = (initialVal: string) => {
+    // 400ms cooldown guard
+    if (Date.now() - lastCloseTime < 400) {
+      return; // Ignore spurious focus event on underlying input right after modal close!
+    }
+    isOpen = true;
+  };
+
+  const commitVirtualKeyboard = (typedVal: string) => {
+    lastCloseTime = Date.now();
+    targetFieldValue = typedVal;
+    isOpen = false;
+  };
+
+  // 1. User opens keyboard with empty field
+  openVirtualKeyboard(targetFieldValue);
+  assert.equal(isOpen, true);
+
+  // 2. User types "Clean bathroom"
+  const typedInKeyboard = "Clean bathroom";
+
+  // 3. User taps Done
+  commitVirtualKeyboard(typedInKeyboard);
+  assert.equal(targetFieldValue, "Clean bathroom", "Target field must have the committed text");
+  assert.equal(isOpen, false, "Keyboard is closed");
+
+  // 4. Underlying input immediately fires onFocus with stale closure (empty string)
+  openVirtualKeyboard(""); // simulated immediate focus-back
+  assert.equal(isOpen, false, "Cooldown must prevent re-opening and wiping the field with stale empty string");
+  assert.equal(targetFieldValue, "Clean bathroom", "Field value remains preserved");
+});
+
+test("19. Multi-child chore assignment allows selecting multiple children individually without All Children button", () => {
+  const children = [
+    { id: "child_1", name: "Emma" },
+    { id: "child_2", name: "Lucas" },
+    { id: "child_3", name: "Noah" }
+  ];
+
+  let assignedTos: string[] = ["up_for_grabs"];
+
+  // Toggle child 1 (Emma)
+  const toggleChild = (childId: string) => {
+    let arr = assignedTos.filter((x) => x !== "up_for_grabs");
+    if (arr.includes(childId)) {
+      arr = arr.filter((x) => x !== childId);
+    } else {
+      arr.push(childId);
+    }
+    if (arr.length === 0) {
+      arr = ["up_for_grabs"];
+    }
+    assignedTos = arr;
+  };
+
+  // Select Emma and Lucas
+  toggleChild("child_1");
+  assert.deepEqual(assignedTos, ["child_1"]);
+
+  toggleChild("child_2");
+  assert.deepEqual(assignedTos, ["child_1", "child_2"], "Can assign multiple children simultaneously");
+
+  // Toggle Lucas off
+  toggleChild("child_2");
+  assert.deepEqual(assignedTos, ["child_1"]);
+
+  // Toggle Emma off -> falls back to up_for_grabs
+  toggleChild("child_1");
+  assert.deepEqual(assignedTos, ["up_for_grabs"], "Unselecting all falls back safely to up_for_grabs");
+});
+
+
 

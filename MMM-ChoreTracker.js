@@ -222,6 +222,11 @@ Module.register("MMM-ChoreTracker", {
       if (!isTargetInput(target)) return;
       if (target.getAttribute("data-no-vk") === "true") return;
 
+      // Ignore focus restoration or tap bleed-through within 400ms of closing
+      if (self._lastKeyboardCloseTime && Date.now() - self._lastKeyboardCloseTime < 400) {
+        return;
+      }
+
       // Don't re-open if already typing in this target
       if (self.virtualKeyboard && self.virtualKeyboard.isOpen && self.virtualKeyboard.targetInput === target) {
         return;
@@ -234,7 +239,9 @@ Module.register("MMM-ChoreTracker", {
         targetInput: target,
         title: title,
         type: type,
-        value: target.value || ""
+        value: target.value || "",
+        onChange: target._vkOnChange || null,
+        onConfirm: target._vkOnConfirm || null
       });
     };
 
@@ -255,6 +262,12 @@ Module.register("MMM-ChoreTracker", {
       if (e) {
         e.stopPropagation();
       }
+      if (self._lastKeyboardCloseTime && Date.now() - self._lastKeyboardCloseTime < 400) {
+        return;
+      }
+      if (self.virtualKeyboard && self.virtualKeyboard.isOpen && self.virtualKeyboard.targetInput === element) {
+        return;
+      }
       self.openVirtualKeyboard({
         targetInput: element,
         title: title || element.placeholder || "Enter text",
@@ -267,6 +280,8 @@ Module.register("MMM-ChoreTracker", {
 
     element.style.cursor = "pointer";
     element.setAttribute("data-vk-attached", "true");
+    element._vkOnChange = onChange;
+    element._vkOnConfirm = onConfirm;
     if (title) element.setAttribute("data-vk-title", title);
     if (type) element.setAttribute("data-vk-type", type);
 
@@ -295,6 +310,7 @@ Module.register("MMM-ChoreTracker", {
   },
 
   closeVirtualKeyboard: function () {
+    this._lastKeyboardCloseTime = Date.now();
     const existing = document.getElementById("ct-virtual-keyboard-root");
     if (existing) {
       existing.remove();
@@ -380,7 +396,7 @@ Module.register("MMM-ChoreTracker", {
     closeBtn.className = "ct-vk-close-btn";
     closeBtn.innerText = "✕ Close";
     bindKeyAction(closeBtn, function () {
-      self.closeVirtualKeyboard();
+      self.commitVirtualKeyboard();
     });
     topBar.appendChild(closeBtn);
     kb.appendChild(topBar);
@@ -510,6 +526,7 @@ Module.register("MMM-ChoreTracker", {
               self.virtualKeyboard.value = self.virtualKeyboard.value.slice(0, -1);
               self.syncVirtualKeyboardValue();
             } else if (key === "ABC") {
+              self.syncVirtualKeyboardValue();
               self.virtualKeyboard.mode = "alpha";
               self.renderVirtualKeyboard();
             } else if (key === "␣ Space") {
@@ -570,9 +587,11 @@ Module.register("MMM-ChoreTracker", {
               self.virtualKeyboard.value = self.virtualKeyboard.value.slice(0, -1);
               self.syncVirtualKeyboardValue();
             } else if (key === "⇧ Shift") {
+              self.syncVirtualKeyboardValue();
               self.virtualKeyboard.isShift = !self.virtualKeyboard.isShift;
               self.renderVirtualKeyboard();
             } else if (key === "?123") {
+              self.syncVirtualKeyboardValue();
               self.virtualKeyboard.mode = "symbols";
               self.renderVirtualKeyboard();
             } else if (key === "␣ Space") {
@@ -580,11 +599,10 @@ Module.register("MMM-ChoreTracker", {
               self.syncVirtualKeyboardValue();
             } else {
               self.virtualKeyboard.value += displayKey;
+              self.syncVirtualKeyboardValue();
               if (self.virtualKeyboard.isShift) {
                 self.virtualKeyboard.isShift = false;
                 self.renderVirtualKeyboard();
-              } else {
-                self.syncVirtualKeyboardValue();
               }
             }
           });
@@ -623,14 +641,23 @@ Module.register("MMM-ChoreTracker", {
   },
 
   commitVirtualKeyboard: function () {
+    this._lastKeyboardCloseTime = Date.now();
     const val = this.virtualKeyboard.value;
     if (this.virtualKeyboard.targetInput) {
       this.virtualKeyboard.targetInput.value = val;
       this.virtualKeyboard.targetInput.dispatchEvent(new Event("input", { bubbles: true }));
       this.virtualKeyboard.targetInput.dispatchEvent(new Event("change", { bubbles: true }));
+      if (this.virtualKeyboard.targetInput.blur) {
+        try {
+          this.virtualKeyboard.targetInput.blur();
+        } catch (e) {}
+      }
     }
     if (typeof this.virtualKeyboard.onConfirm === "function") {
       this.virtualKeyboard.onConfirm(val);
+    }
+    if (typeof this.virtualKeyboard.onChange === "function") {
+      this.virtualKeyboard.onChange(val);
     }
     this.closeVirtualKeyboard();
   },
@@ -2803,8 +2830,8 @@ Module.register("MMM-ChoreTracker", {
           rewGrp.style.marginBottom = "8px";
           rewGrp.innerHTML = `<label class="ct-form-label" style="font-size:12px;">Reward Amount (${self.config.currencySymbol})</label>`;
           const rewInput = document.createElement("input");
-          rewInput.type = "number";
-          rewInput.step = "0.50";
+          rewInput.type = "text";
+          rewInput.inputMode = "decimal";
           rewInput.className = "ct-input";
           rewInput.value = draft.reward_amount;
           rewInput.style.padding = "8px 12px";
@@ -3235,8 +3262,8 @@ Module.register("MMM-ChoreTracker", {
       rewardGroup.className = "ct-form-group";
       rewardGroup.innerHTML = `<label class="ct-form-label">Reward Amount (${this.config.currencySymbol})</label>`;
       const rewardInput = document.createElement("input");
-      rewardInput.type = "number";
-      rewardInput.step = "0.50";
+      rewardInput.type = "text";
+      rewardInput.inputMode = "decimal";
       rewardInput.className = "ct-input";
       rewardInput.value = this.newTaskDraft.reward_amount;
       rewardInput.addEventListener("input", function (e) {
@@ -3381,15 +3408,19 @@ Module.register("MMM-ChoreTracker", {
 
           chip.className = `ct-day-chip ${isSelected ? "selected" : ""}`;
           chip.style.display = "flex";
-          chip.style.flexDirection = "column";
+          chip.style.flexDirection = "row";
           chip.style.alignItems = "center";
-          chip.style.padding = "4px 2px";
+          chip.style.justifyContent = "center";
+          chip.style.height = "28px";
+          chip.style.padding = "2px 4px";
+          chip.style.fontSize = "11px";
+          chip.style.gap = "4px";
 
           let subBadge = "";
           if (isTomorrow) {
-            subBadge = `<span style="font-size:8px; font-weight:800; color:#a5b4fc; text-transform:uppercase; margin-top:2px;">Tmrw</span>`;
+            subBadge = `<span style="font-size:9px; font-weight:800; color:#a5b4fc; text-transform:uppercase;" title="Tomorrow">•</span>`;
           } else if (isToday) {
-            subBadge = `<span style="font-size:8px; font-weight:800; color:#fde68a; text-transform:uppercase; margin-top:2px;">Today</span>`;
+            subBadge = `<span style="font-size:9px; font-weight:800; color:#fde68a; text-transform:uppercase;" title="Today">•</span>`;
           }
 
           chip.innerHTML = `<span>${item.label}</span>${subBadge}`;
@@ -3512,29 +3543,6 @@ Module.register("MMM-ChoreTracker", {
 
     assignGroup.appendChild(chipsGrid);
 
-    // Helper button: Select All Children
-    if (this.profiles.length > 1) {
-      const helperRow = document.createElement("div");
-      helperRow.style.display = "flex";
-      helperRow.style.gap = "8px";
-      helperRow.style.marginTop = "6px";
-
-      const selectAllBtn = document.createElement("button");
-      selectAllBtn.type = "button";
-      selectAllBtn.className = "ct-btn-secondary";
-      selectAllBtn.style.padding = "4px 10px";
-      selectAllBtn.style.fontSize = "11.5px";
-      const allUsersSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`;
-      selectAllBtn.innerHTML = `${allUsersSvg}<span>Assign to All Children</span>`;
-      selectAllBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        self.newTaskDraft.assigned_to = self.profiles.map((p) => p.id);
-        self.updateDom(50);
-      });
-      helperRow.appendChild(selectAllBtn);
-      assignGroup.appendChild(helperRow);
-    }
-
     form.appendChild(assignGroup);
 
     // Initial Parent Note / Instructions
@@ -3634,7 +3642,11 @@ Module.register("MMM-ChoreTracker", {
     addInput.className = "ct-input";
     addInput.placeholder = "Enter child's name (e.g. Emma, Lucas, Noah)...";
     addInput.style.flex = "1";
-    self.attachVirtualKeyboard(addInput, "New Child Name", "text");
+    self.attachVirtualKeyboard(addInput, "New Child Name", "text", function (val) {
+      addInput.value = val;
+    }, function (val) {
+      addInput.value = val;
+    });
 
     const addBtn = document.createElement("button");
     addBtn.className = "ct-btn-primary";
@@ -3698,7 +3710,11 @@ Module.register("MMM-ChoreTracker", {
       nameInput.value = profile.name;
       nameInput.style.flex = "1";
       nameInput.placeholder = "Child name...";
-      self.attachVirtualKeyboard(nameInput, `Rename Child: ${profile.name}`, "text");
+      self.attachVirtualKeyboard(nameInput, `Rename Child: ${profile.name}`, "text", function (val) {
+        nameInput.value = val;
+      }, function (val) {
+        nameInput.value = val;
+      });
 
       // Right actions
       const actions = document.createElement("div");

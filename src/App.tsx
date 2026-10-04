@@ -648,16 +648,31 @@ export default function App() {
     type: "text" | "number";
     mode: "alpha" | "symbols" | "numbers";
     isShift: boolean;
-    onConfirm: (val: string) => void;
   }>({
     isOpen: false,
     title: "",
     value: "",
     type: "text",
     mode: "alpha",
-    isShift: false,
-    onConfirm: () => {}
+    isShift: false
   });
+
+  const popupInputRef = useRef<HTMLInputElement>(null);
+  const keyboardValueRef = useRef<string>("");
+  const keyboardInitialValRef = useRef<string>("");
+  const keyboardOnConfirmRef = useRef<((val: string) => void) | null>(null);
+  const lastKeyboardCloseTimeRef = useRef<number>(0);
+
+  const getLatestTypedValue = () => {
+    // Check direct input element DOM value first for whatever user sees on-screen
+    if (popupInputRef.current && typeof popupInputRef.current.value === "string") {
+      return popupInputRef.current.value;
+    }
+    if (keyboardValueRef.current !== undefined && keyboardValueRef.current !== null) {
+      return keyboardValueRef.current;
+    }
+    return virtualKeyboard.value || "";
+  };
 
   const openVirtualKeyboard = (
     title: string,
@@ -665,20 +680,160 @@ export default function App() {
     type: "text" | "number" = "text",
     onConfirm: (val: string) => void
   ) => {
+    // Guard: ignore focus restoration or tap bleed-through within 400ms of closing
+    if (Date.now() - lastKeyboardCloseTimeRef.current < 400) {
+      return;
+    }
+    // Guard: if already open, don't reset or wipe out typing in progress
+    if (virtualKeyboard.isOpen) {
+      return;
+    }
+
+    const valStr = initialVal !== undefined && initialVal !== null ? String(initialVal) : "";
+    keyboardValueRef.current = valStr;
+    keyboardInitialValRef.current = valStr;
+    keyboardOnConfirmRef.current = onConfirm;
+
     setVirtualKeyboard({
       isOpen: true,
       title,
-      value: initialVal || "",
+      value: valStr,
       type,
       mode: type === "number" ? "numbers" : "alpha",
-      isShift: false,
-      onConfirm
+      isShift: false
     });
   };
 
-  const closeVirtualKeyboard = () => {
-    setVirtualKeyboard((prev) => ({ ...prev, isOpen: false }));
+  const commitVirtualKeyboard = () => {
+    lastKeyboardCloseTimeRef.current = Date.now();
+    const finalVal = getLatestTypedValue();
+    keyboardValueRef.current = finalVal;
+    if (keyboardOnConfirmRef.current) {
+      try {
+        keyboardOnConfirmRef.current(finalVal);
+      } catch (err) {
+        console.error("Virtual keyboard commit error:", err);
+      }
+    }
+    // Blur any active element so focus-back does not immediately trigger onFocus
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      try {
+        (document.activeElement as HTMLElement).blur();
+      } catch (e) {}
+    }
+    setVirtualKeyboard((prev) => ({ ...prev, isOpen: false, value: "" }));
   };
+
+  const cancelVirtualKeyboard = () => {
+    lastKeyboardCloseTimeRef.current = Date.now();
+    const originalVal = keyboardInitialValRef.current;
+    keyboardValueRef.current = originalVal;
+    if (keyboardOnConfirmRef.current) {
+      try {
+        keyboardOnConfirmRef.current(originalVal);
+      } catch (err) {
+        console.error("Virtual keyboard cancel error:", err);
+      }
+    }
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      try {
+        (document.activeElement as HTMLElement).blur();
+      } catch (e) {}
+    }
+    setVirtualKeyboard((prev) => ({ ...prev, isOpen: false, value: "" }));
+  };
+
+  const handleVirtualKeyInput = (char: string) => {
+    const cur = popupInputRef.current ? popupInputRef.current.value : keyboardValueRef.current;
+    const nextVal = cur + char;
+    keyboardValueRef.current = nextVal;
+    if (popupInputRef.current) {
+      popupInputRef.current.value = nextVal;
+    }
+    if (keyboardOnConfirmRef.current) {
+      try {
+        keyboardOnConfirmRef.current(nextVal);
+      } catch (err) {}
+    }
+    setVirtualKeyboard((prev) => ({
+      ...prev,
+      value: nextVal,
+      isShift: false
+    }));
+  };
+
+  const handleVirtualKeyBackspace = () => {
+    const cur = popupInputRef.current ? popupInputRef.current.value : keyboardValueRef.current;
+    const nextVal = cur.slice(0, -1);
+    keyboardValueRef.current = nextVal;
+    if (popupInputRef.current) {
+      popupInputRef.current.value = nextVal;
+    }
+    if (keyboardOnConfirmRef.current) {
+      try {
+        keyboardOnConfirmRef.current(nextVal);
+      } catch (err) {}
+    }
+    setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+  };
+
+  const handleVirtualKeyClear = () => {
+    keyboardValueRef.current = "";
+    if (popupInputRef.current) {
+      popupInputRef.current.value = "";
+    }
+    if (keyboardOnConfirmRef.current) {
+      try {
+        keyboardOnConfirmRef.current("");
+      } catch (err) {}
+    }
+    setVirtualKeyboard((prev) => ({ ...prev, value: "" }));
+  };
+
+  const handleVirtualKeyQuickAmount = (amountStr: string) => {
+    const add = parseFloat(amountStr.replace(/[^\d.]/g, "")) || 0;
+    const cur = parseFloat(popupInputRef.current ? popupInputRef.current.value : keyboardValueRef.current) || 0;
+    const nextVal = (cur + add).toFixed(2);
+    keyboardValueRef.current = nextVal;
+    if (popupInputRef.current) {
+      popupInputRef.current.value = nextVal;
+    }
+    if (keyboardOnConfirmRef.current) {
+      try {
+        keyboardOnConfirmRef.current(nextVal);
+      } catch (err) {}
+    }
+    setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
+  };
+
+  // Physical keyboard listener while virtual keyboard is open
+  useEffect(() => {
+    if (!virtualKeyboard.isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if an actual focused input element is typing
+      if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) {
+        return;
+      }
+
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitVirtualKeyboard();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelVirtualKeyboard();
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        handleVirtualKeyBackspace();
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleVirtualKeyInput(e.key);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [virtualKeyboard.isOpen]);
 
   // Clock
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -2276,6 +2431,11 @@ module.exports = NodeHelper.create({ ... });`}
                   placeholder="Add instructions or update note..."
                   value={customNoteText}
                   onChange={(e) => setCustomNoteText(e.target.value)}
+                  onFocus={() =>
+                    openVirtualKeyboard("Chore Note", customNoteText, "text", (val) =>
+                      setCustomNoteText(val)
+                    )
+                  }
                   onClick={() =>
                     openVirtualKeyboard("Chore Note", customNoteText, "text", (val) =>
                       setCustomNoteText(val)
@@ -2650,11 +2810,11 @@ module.exports = NodeHelper.create({ ... });`}
 
                 {/* Inline Creation Card (Shown when toggled or if chore inventory is empty) */}
                 {(isCreatingChore || tasks.length === 0) && (
-                  <div className="bg-slate-900 border border-sky-500/40 rounded-3xl p-6 sm:p-7 space-y-4 shadow-xl">
-                    <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div className="bg-slate-900 border border-sky-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
+                    <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-sky-400" />
-                        <h4 className="font-bold text-white text-base">Create &amp; Schedule New Chore</h4>
+                        <Sparkles className="w-4 h-4 text-sky-400" />
+                        <h4 className="font-bold text-white text-sm sm:text-base">Create &amp; Schedule New Chore</h4>
                       </div>
                       {tasks.length > 0 && (
                         <button
@@ -2668,7 +2828,7 @@ module.exports = NodeHelper.create({ ... });`}
                     </div>
 
                     <div>
-                      <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                      <label className="text-xs font-bold text-slate-300 block mb-1 flex items-center gap-1.5">
                         <ListChecks className="w-3.5 h-3.5 text-sky-400" />
                         Chore Title
                       </label>
@@ -2676,41 +2836,46 @@ module.exports = NodeHelper.create({ ... });`}
                         type="text"
                         value={newTitle}
                         onChange={(e) => setNewTitle(e.target.value)}
+                        onFocus={() =>
+                          openVirtualKeyboard("Chore Title", newTitle, "text", (val) =>
+                            setNewTitle(val)
+                          )
+                        }
                         onClick={() =>
                           openVirtualKeyboard("Chore Title", newTitle, "text", (val) =>
                             setNewTitle(val)
                           )
                         }
                         placeholder="e.g., Vacuum living room, Clean room, Empty dishwasher, Replace air filters..."
-                        className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
+                        className="w-full bg-slate-950 border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-bold text-slate-300 block mb-1.5">Category</label>
+                      <label className="text-xs font-bold text-slate-300 block mb-1">Category</label>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => setNewCategory("routine")}
-                          className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          className={`flex-1 py-2 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
                             newCategory === "routine"
                               ? "bg-sky-500/20 border-sky-400 text-sky-300"
                               : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
                           }`}
                         >
-                          <Clock className="w-4 h-4" />
+                          <Clock className="w-3.5 h-3.5" />
                           Routine Expectation ($0.00)
                         </button>
                         <button
                           type="button"
                           onClick={() => setNewCategory("monetized")}
-                          className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          className={`flex-1 py-2 rounded-xl text-xs sm:text-sm font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
                             newCategory === "monetized"
                               ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
                               : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
                           }`}
                         >
-                          <DollarSign className="w-4 h-4" />
+                          <DollarSign className="w-3.5 h-3.5" />
                           Monetized Bounty ($)
                         </button>
                       </div>
@@ -2718,31 +2883,36 @@ module.exports = NodeHelper.create({ ... });`}
 
                     {newCategory === "monetized" ? (
                       <div>
-                        <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                        <label className="text-xs font-bold text-slate-300 block mb-1 flex items-center gap-1.5">
                           <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
                           Reward Bounty Amount ($)
                         </label>
                         <input
-                          type="number"
-                          step="0.50"
+                          type="text"
+                          inputMode="decimal"
                           value={newReward}
                           onChange={(e) => setNewReward(e.target.value)}
+                          onFocus={() =>
+                            openVirtualKeyboard("Reward Amount ($)", newReward, "number", (val) =>
+                              setNewReward(val)
+                            )
+                          }
                           onClick={() =>
                             openVirtualKeyboard("Reward Amount ($)", newReward, "number", (val) =>
                               setNewReward(val)
                             )
                           }
-                          className="w-full bg-slate-950 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer font-mono"
+                          className="w-full bg-slate-950 border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-sky-400 cursor-pointer font-mono"
                         />
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2.5">
                         <div>
-                          <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                          <label className="text-xs font-bold text-slate-300 block mb-1 flex items-center gap-1.5">
                             <Calendar className="w-3.5 h-3.5 text-sky-400" />
                             Recurrence Frequency &amp; Schedule
                           </label>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                             {[
                               { id: "weekly", label: "Daily / Weekly", icon: Calendar },
                               { id: "bi_weekly", label: "Every 2 Weeks", icon: Clock },
@@ -2759,13 +2929,13 @@ module.exports = NodeHelper.create({ ... });`}
                                   key={opt.id}
                                   type="button"
                                   onClick={() => setNewFrequency(opt.id)}
-                                  className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                  className={`py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
                                     isSel
                                       ? "bg-sky-500/20 border-sky-400 text-sky-200 shadow-sm"
                                       : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
                                   }`}
                                 >
-                                  <OptIcon className="w-3.5 h-3.5 shrink-0" />
+                                  <OptIcon className="w-3 h-3 shrink-0" />
                                   <span>{opt.label}</span>
                                 </button>
                               );
@@ -2774,14 +2944,14 @@ module.exports = NodeHelper.create({ ... });`}
                         </div>
 
                         {newFrequency === "weekly" ? (
-                          <div>
-                            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
                               <label className="text-[11px] font-semibold text-slate-400">Active Days of Week</label>
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
                                   onClick={() => setNewDays([((currentTime.getDay() + 1) % 7)])}
-                                  className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold transition cursor-pointer flex items-center gap-1 ${
+                                  className={`text-[10px] px-2 py-0.5 rounded-md border font-bold transition cursor-pointer flex items-center gap-1 ${
                                     newDays.length === 1 && newDays.includes((currentTime.getDay() + 1) % 7)
                                       ? "bg-indigo-600/40 border-indigo-400 text-indigo-200 shadow-sm"
                                       : "bg-white/5 border-white/10 text-indigo-300/80 hover:text-white hover:bg-white/10"
@@ -2789,23 +2959,23 @@ module.exports = NodeHelper.create({ ... });`}
                                   title="Test Day Before Preview with chore scheduled for tomorrow"
                                 >
                                   <Sparkles className="w-2.5 h-2.5 text-indigo-300" />
-                                  <span>Tomorrow Only</span>
+                                  <span>Tomorrow</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setNewDays([currentTime.getDay()])}
-                                  className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold transition cursor-pointer ${
+                                  className={`text-[10px] px-2 py-0.5 rounded-md border font-bold transition cursor-pointer ${
                                     newDays.length === 1 && newDays.includes(currentTime.getDay())
                                       ? "bg-sky-600/40 border-sky-400 text-sky-200 shadow-sm"
                                       : "bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10"
                                   }`}
                                 >
-                                  Today Only
+                                  Today
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setNewDays([0, 1, 2, 3, 4, 5, 6])}
-                                  className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold transition cursor-pointer ${
+                                  className={`text-[10px] px-2 py-0.5 rounded-md border font-bold transition cursor-pointer ${
                                     newDays.length === 7
                                       ? "bg-sky-600/40 border-sky-400 text-sky-200 shadow-sm"
                                       : "bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10"
@@ -2815,7 +2985,8 @@ module.exports = NodeHelper.create({ ... });`}
                                 </button>
                               </div>
                             </div>
-                            <div className="flex gap-1.5">
+                            {/* Compact Day of Week Buttons */}
+                            <div className="flex gap-1">
                               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dIdx) => {
                                 const sel = newDays.includes(dIdx);
                                 const isTmrw = dIdx === ((currentTime.getDay() + 1) % 7);
@@ -2829,24 +3000,20 @@ module.exports = NodeHelper.create({ ... });`}
                                         sel ? prev.filter((x) => x !== dIdx) : [...prev, dIdx]
                                       );
                                     }}
-                                    className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer flex flex-col items-center justify-center ${
+                                    className={`flex-1 h-7 sm:h-8 py-0.5 px-1 rounded-lg text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1 relative ${
                                       sel
                                         ? isTmrw
                                           ? "bg-indigo-600 border-indigo-400 text-white shadow-sm"
-                                          : "bg-sky-600 border-sky-400 text-white"
-                                        : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300"
+                                          : "bg-sky-600 border-sky-400 text-white shadow-sm"
+                                        : "bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10"
                                     }`}
                                   >
                                     <span>{day}</span>
                                     {isTmrw && (
-                                      <span className="text-[8px] font-black text-indigo-200 uppercase tracking-tight">
-                                        Tmrw
-                                      </span>
+                                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-300 ring-1 ring-slate-900" title="Tomorrow" />
                                     )}
                                     {isTdy && (
-                                      <span className="text-[8px] font-black text-amber-200 uppercase tracking-tight">
-                                        Today
-                                      </span>
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-300 ring-1 ring-slate-900" title="Today" />
                                     )}
                                   </button>
                                 );
@@ -2854,7 +3021,7 @@ module.exports = NodeHelper.create({ ... });`}
                             </div>
                           </div>
                         ) : (
-                          <div className="p-3 rounded-xl bg-sky-950/30 border border-sky-500/20 text-xs text-sky-300 flex items-center gap-2">
+                          <div className="p-2.5 rounded-xl bg-sky-950/30 border border-sky-500/20 text-xs text-sky-300 flex items-center gap-2">
                             <Info className="w-4 h-4 shrink-0 text-sky-400" />
                             <span>
                               {newFrequency === "bi_weekly" && "Resets 14 days after completion for regular bi-weekly tasks."}
@@ -2871,7 +3038,7 @@ module.exports = NodeHelper.create({ ... });`}
 
                     {/* Multi-Child Assignment Chips */}
                     <div>
-                      <div className="flex justify-between items-center mb-1.5">
+                      <div className="flex justify-between items-center mb-1">
                         <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                           <Users className="w-3.5 h-3.5 text-sky-400" />
                           Assign Chore To
@@ -2879,22 +3046,22 @@ module.exports = NodeHelper.create({ ... });`}
                         <span className="text-[11px] text-slate-400">Select one or multiple children</span>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5">
                         {/* Up For Grabs */}
                         <button
                           type="button"
                           onClick={() => setNewAssignedTos(["up_for_grabs"])}
-                          className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
                             newAssignedTos.includes("up_for_grabs")
-                              ? "bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20"
+                              ? "bg-purple-600/30 border-purple-400 text-purple-200 shadow-sm"
                               : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
                           }`}
                         >
-                          <Zap className="w-3.5 h-3.5 text-amber-300" />
+                          <Zap className="w-3 h-3 text-amber-300" />
                           <span>Up For Grabs (Open Bounty)</span>
                         </button>
 
-                        {/* Each Child Chip */}
+                        {/* Each Child Chip (supports multi-selection) */}
                         {profiles.map((p) => {
                           const isSel = newAssignedTos.includes(p.id);
                           return (
@@ -2913,43 +3080,30 @@ module.exports = NodeHelper.create({ ... });`}
                                 }
                                 setNewAssignedTos(updated);
                               }}
-                              className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition cursor-pointer ${
                                 isSel
-                                  ? "bg-sky-600/30 border-sky-400 text-sky-200 shadow-md shadow-sky-600/20"
+                                  ? "bg-sky-600/30 border-sky-400 text-sky-200 shadow-sm"
                                   : "bg-slate-950 border-white/10 text-slate-400 hover:text-white"
                               }`}
                             >
                               {isSel ? (
-                                <Check className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                                <Check className="w-3 h-3 text-sky-300 shrink-0" />
                               ) : (
-                                <Plus className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <Plus className="w-3 h-3 text-slate-400 shrink-0" />
                               )}
-                              <User className="w-3.5 h-3.5 text-sky-400" />
+                              <User className="w-3 h-3 text-sky-400" />
                               <span>{p.name}</span>
                             </button>
                           );
                         })}
                       </div>
-
-                      {profiles.length > 1 && (
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setNewAssignedTos(profiles.map((p) => p.id))}
-                            className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 py-1 px-2.5 rounded-lg bg-white/5 border border-white/10 cursor-pointer flex items-center gap-1"
-                          >
-                            <Users className="w-3 h-3" />
-                            <span>Assign to All Children ({profiles.length})</span>
-                          </button>
-                        </div>
-                      )}
                     </div>
 
-                    <div className="flex gap-2.5 pt-2">
+                    <div className="flex gap-2.5 pt-1">
                       <button
                         type="button"
                         onClick={handleCreateChore}
-                        className="flex-1 bg-sky-500 hover:bg-sky-400 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition active:scale-95 cursor-pointer"
+                        className="flex-1 bg-sky-500 hover:bg-sky-400 text-white font-bold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition active:scale-95 cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Publish Chore</span>
@@ -2957,7 +3111,7 @@ module.exports = NodeHelper.create({ ... });`}
                       <button
                         type="button"
                         onClick={() => setIsCreatingChore(false)}
-                        className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold text-xs transition cursor-pointer"
+                        className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold text-xs transition cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -3039,6 +3193,11 @@ module.exports = NodeHelper.create({ ... });`}
                                 value={editingChoreDraft.title}
                                 onChange={(e) =>
                                   setEditingChoreDraft((prev) => prev ? { ...prev, title: e.target.value } : null)
+                                }
+                                onFocus={() =>
+                                  openVirtualKeyboard("Edit Title", editingChoreDraft.title, "text", (val) =>
+                                    setEditingChoreDraft((prev) => prev ? { ...prev, title: val } : null)
+                                  )
                                 }
                                 onClick={() =>
                                   openVirtualKeyboard("Edit Title", editingChoreDraft.title, "text", (val) =>
@@ -3209,11 +3368,16 @@ module.exports = NodeHelper.create({ ... });`}
                               <div>
                                 <label className="text-xs font-bold text-slate-300 block mb-1">Reward Bounty ($)</label>
                                 <input
-                                  type="number"
-                                  step="0.50"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={editingChoreDraft.reward_amount}
                                   onChange={(e) =>
                                     setEditingChoreDraft((prev) => prev ? { ...prev, reward_amount: e.target.value } : null)
+                                  }
+                                  onFocus={() =>
+                                    openVirtualKeyboard("Reward Amount ($)", editingChoreDraft.reward_amount, "number", (val) =>
+                                      setEditingChoreDraft((prev) => prev ? { ...prev, reward_amount: val } : null)
+                                    )
                                   }
                                   onClick={() =>
                                     openVirtualKeyboard("Reward Amount ($)", editingChoreDraft.reward_amount, "number", (val) =>
@@ -3491,6 +3655,11 @@ module.exports = NodeHelper.create({ ... });`}
                       type="text"
                       value={newChildName}
                       onChange={(e) => setNewChildName(e.target.value)}
+                      onFocus={() =>
+                        openVirtualKeyboard("New Child Name", newChildName, "text", (val) =>
+                          setNewChildName(val)
+                        )
+                      }
                       onClick={() =>
                         openVirtualKeyboard("New Child Name", newChildName, "text", (val) =>
                           setNewChildName(val)
@@ -3545,6 +3714,11 @@ module.exports = NodeHelper.create({ ... });`}
                           value={currentInputVal}
                           onChange={(e) =>
                             setEditingChildNames((prev) => ({ ...prev, [p.id]: e.target.value }))
+                          }
+                          onFocus={() =>
+                            openVirtualKeyboard(`Rename Child: ${p.name}`, currentInputVal, "text", (val) =>
+                              setEditingChildNames((prev) => ({ ...prev, [p.id]: val }))
+                            )
                           }
                           onClick={() =>
                             openVirtualKeyboard(`Rename Child: ${p.name}`, currentInputVal, "text", (val) =>
@@ -3694,7 +3868,7 @@ module.exports = NodeHelper.create({ ... });`}
       {/* DIGITAL ON-SCREEN VIRTUAL KEYBOARD OVERLAY */}
       {virtualKeyboard.isOpen && (
         <div
-          onClick={closeVirtualKeyboard}
+          onClick={commitVirtualKeyboard}
           className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-xs flex flex-col justify-end p-2 sm:p-4 select-none"
         >
           <div
@@ -3708,30 +3882,79 @@ module.exports = NodeHelper.create({ ... });`}
                 <span>Typing:</span>
                 <span className="text-sky-400 font-black">{virtualKeyboard.title}</span>
               </div>
-              <button
-                type="button"
-                onClick={closeVirtualKeyboard}
-                className="text-xs font-bold text-slate-400 hover:text-white px-3 py-1 bg-white/10 rounded-full cursor-pointer transition flex items-center gap-1"
-              >
-                <X className="w-3.5 h-3.5" />
-                <span>Cancel</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={cancelVirtualKeyboard}
+                  className="text-xs font-bold text-slate-400 hover:text-white px-3 py-1 bg-white/10 rounded-full cursor-pointer transition flex items-center gap-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Cancel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={commitVirtualKeyboard}
+                  className="text-xs font-bold text-white px-3.5 py-1 bg-emerald-600 hover:bg-emerald-500 rounded-full cursor-pointer transition flex items-center gap-1 shadow-md shadow-emerald-600/30"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Done</span>
+                </button>
+              </div>
             </div>
 
-            {/* Live Preview Display with Cursor and Clear */}
-            <div className="flex items-center gap-3 bg-slate-950 border border-sky-400/40 rounded-2xl px-4 py-3 shadow-inner">
-              <div className="flex-1 font-mono text-base sm:text-lg text-white font-semibold flex items-center min-h-[28px] break-all">
-                <span>{virtualKeyboard.value}</span>
-                <span className="inline-block w-0.5 h-5 bg-sky-400 ml-1 animate-pulse" />
-              </div>
+            {/* Live Preview Display with Editable Input */}
+            <div className="flex items-center gap-3 bg-slate-950 border-2 border-sky-400 rounded-2xl px-4 py-2.5 shadow-inner">
+              <input
+                ref={popupInputRef}
+                type="text"
+                autoFocus
+                value={virtualKeyboard.value}
+                onInput={(e) => {
+                  const val = (e.target as HTMLInputElement).value;
+                  keyboardValueRef.current = val;
+                  if (keyboardOnConfirmRef.current) {
+                    try {
+                      keyboardOnConfirmRef.current(val);
+                    } catch (err) {}
+                  }
+                  setVirtualKeyboard((prev) => ({ ...prev, value: val }));
+                }}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  keyboardValueRef.current = val;
+                  if (keyboardOnConfirmRef.current) {
+                    try {
+                      keyboardOnConfirmRef.current(val);
+                    } catch (err) {}
+                  }
+                  setVirtualKeyboard((prev) => ({ ...prev, value: val }));
+                }}
+                onBlur={(e) => {
+                  const val = e.target.value;
+                  keyboardValueRef.current = val;
+                  if (keyboardOnConfirmRef.current) {
+                    try {
+                      keyboardOnConfirmRef.current(val);
+                    } catch (err) {}
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitVirtualKeyboard();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelVirtualKeyboard();
+                  }
+                }}
+                className="flex-1 font-mono text-base sm:text-lg text-white font-semibold bg-transparent focus:outline-none min-h-[28px]"
+                placeholder="Type or tap keys below..."
+              />
               {virtualKeyboard.value && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setVirtualKeyboard((prev) => ({ ...prev, value: "" }));
-                    virtualKeyboard.onConfirm("");
-                  }}
-                  className="text-xs text-rose-400 hover:text-rose-300 px-2.5 py-1 bg-rose-500/10 rounded-lg cursor-pointer flex items-center gap-1"
+                  onClick={handleVirtualKeyClear}
+                  className="text-xs text-rose-400 hover:text-rose-300 px-2.5 py-1 bg-rose-500/10 rounded-lg cursor-pointer flex items-center gap-1 shrink-0"
                 >
                   <RotateCcw className="w-3 h-3" />
                   <span>Clear</span>
@@ -3760,22 +3983,13 @@ module.exports = NodeHelper.create({ ... });`}
                           type="button"
                           onClick={() => {
                             if (isDone) {
-                              virtualKeyboard.onConfirm(virtualKeyboard.value);
-                              closeVirtualKeyboard();
+                              commitVirtualKeyboard();
                             } else if (isDel) {
-                              const nextVal = virtualKeyboard.value.slice(0, -1);
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyBackspace();
                             } else if (isQuick) {
-                              const add = parseFloat(key.replace(/[^\d.]/g, "")) || 0;
-                              const cur = parseFloat(virtualKeyboard.value) || 0;
-                              const nextVal = (cur + add).toFixed(2);
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyQuickAmount(key);
                             } else {
-                              const nextVal = virtualKeyboard.value + key;
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyInput(key);
                             }
                           }}
                           className={`flex-1 py-3.5 rounded-xl font-bold text-sm sm:text-base transition cursor-pointer active:scale-95 ${
@@ -3837,22 +4051,15 @@ module.exports = NodeHelper.create({ ... });`}
                           type="button"
                           onClick={() => {
                             if (isDone) {
-                              virtualKeyboard.onConfirm(virtualKeyboard.value);
-                              closeVirtualKeyboard();
+                              commitVirtualKeyboard();
                             } else if (isDel) {
-                              const nextVal = virtualKeyboard.value.slice(0, -1);
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyBackspace();
                             } else if (isABC) {
                               setVirtualKeyboard((prev) => ({ ...prev, mode: "alpha" }));
                             } else if (isSpace) {
-                              const nextVal = virtualKeyboard.value + " ";
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyInput(" ");
                             } else {
-                              const nextVal = virtualKeyboard.value + key;
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyInput(key);
                             }
                           }}
                           className={`min-h-[44px] sm:min-h-[48px] py-2.5 rounded-xl font-bold text-sm sm:text-base transition cursor-pointer active:scale-95 ${
@@ -3916,28 +4123,17 @@ module.exports = NodeHelper.create({ ... });`}
                           type="button"
                           onClick={() => {
                             if (isDone) {
-                              virtualKeyboard.onConfirm(virtualKeyboard.value);
-                              closeVirtualKeyboard();
+                              commitVirtualKeyboard();
                             } else if (isDel) {
-                              const nextVal = virtualKeyboard.value.slice(0, -1);
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyBackspace();
                             } else if (isShift) {
                               setVirtualKeyboard((prev) => ({ ...prev, isShift: !prev.isShift }));
                             } else if (isSymbols) {
                               setVirtualKeyboard((prev) => ({ ...prev, mode: "symbols" }));
                             } else if (isSpace) {
-                              const nextVal = virtualKeyboard.value + " ";
-                              setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyInput(" ");
                             } else {
-                              const nextVal = virtualKeyboard.value + displayKey;
-                              setVirtualKeyboard((prev) => ({
-                                ...prev,
-                                value: nextVal,
-                                isShift: false
-                              }));
-                              virtualKeyboard.onConfirm(nextVal);
+                              handleVirtualKeyInput(displayKey);
                             }
                           }}
                           className={`min-h-[44px] sm:min-h-[48px] py-2.5 rounded-xl font-bold text-sm sm:text-base transition cursor-pointer active:scale-95 ${
