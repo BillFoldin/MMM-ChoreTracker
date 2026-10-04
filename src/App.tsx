@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   CheckCircle2,
@@ -25,7 +25,6 @@ import {
   Info,
   X,
   ArrowLeft,
-  ArrowDown,
   Keyboard,
   History,
   ListChecks,
@@ -33,7 +32,6 @@ import {
   Edit3,
   User,
   RefreshCw,
-  Award,
   Zap,
   Layers,
   PlusCircle,
@@ -144,43 +142,10 @@ function getChoreScheduleStatus(task: Task, now: Date = new Date()): ChoreSchedu
       };
     }
 
-    // 3. For non-daily weekly tasks: check if there is an unfinished past occurrence (Overdue!)
-    if (!isDaily) {
-      let daysAgo = 0;
-      let scheduledDayIndex = -1;
-      for (let i = 1; i <= 7; i++) {
-        const checkDay = (currentDayOfWeek - i + 7) % 7;
-        if (days.includes(checkDay)) {
-          daysAgo = i;
-          scheduledDayIndex = checkDay;
-          break;
-        }
-      }
-
-      if (daysAgo > 0) {
-        const lastScheduledDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-        const lastScheduledDateStr = lastScheduledDate.toISOString().split("T")[0];
-        const isCompletedForLastSchedule = Boolean(
-          task.last_completed_date && task.last_completed_date >= lastScheduledDateStr
-        );
-
-        if (!isCompletedForLastSchedule) {
-          // Unfinished past task: leave on the list until completed and mark red as overdue!
-          const scheduledDayName = dayNames[scheduledDayIndex];
-          return {
-            isToday: false,
-            isOverdue: true,
-            isUpcoming: false,
-            isDaily: false,
-            statusLabel: "Overdue",
-            dueDetail: `Overdue (Scheduled for ${scheduledDayName})`
-          };
-        }
-      }
-    }
-
-    // 4. Is it upcoming tomorrow (the day before it is scheduled)?
-    if (days.includes(tomorrowDayOfWeek)) {
+    // 3. Day before preview check: is it scheduled for tomorrow?
+    // Show upcoming chores the day before they are scheduled (not overdue, excluded from daily goal)
+    const isTomorrow = days.includes(tomorrowDayOfWeek);
+    if (isTomorrow) {
       return {
         isToday: false,
         isOverdue: false,
@@ -191,7 +156,59 @@ function getChoreScheduleStatus(task: Task, now: Date = new Date()): ChoreSchedu
       };
     }
 
-    // Otherwise, scheduled for another day in the cycle
+    // 4. Overdue check:
+    // "Overdue chores should be removed automatically after 2 days if not completed"
+    // Only check past occurrences within the last 2 days (1 day ago or 2 days ago)!
+    // If it was more than 2 days ago, it is automatically removed and NOT marked overdue.
+    if (!isDaily) {
+      let overdueDaysAgo = 0;
+      let scheduledDayIndex = -1;
+
+      // Only check 1 day ago and 2 days ago (max 2 days overdue!)
+      for (let i = 1; i <= 2; i++) {
+        const checkDay = (currentDayOfWeek - i + 7) % 7;
+        if (days.includes(checkDay)) {
+          overdueDaysAgo = i;
+          scheduledDayIndex = checkDay;
+          break;
+        }
+      }
+
+      if (overdueDaysAgo > 0) {
+        const lastScheduledDate = new Date(now.getTime() - overdueDaysAgo * 24 * 60 * 60 * 1000);
+        const lastScheduledDateStr = lastScheduledDate.toISOString().split("T")[0];
+
+        // Check if the chore was created AFTER that past occurrence (e.g. newly created chore today)
+        let createdAfterSchedule = false;
+        if (task.created_at) {
+          const taskCreatedDate = task.created_at.split("T")[0];
+          if (taskCreatedDate > lastScheduledDateStr) {
+            createdAfterSchedule = true;
+          }
+        }
+
+        const isCompletedForLastSchedule = Boolean(
+          task.last_completed_date && task.last_completed_date >= lastScheduledDateStr
+        );
+
+        if (!isCompletedForLastSchedule && !createdAfterSchedule) {
+          // Unfinished past task within the 2-day overdue window
+          const scheduledDayName = dayNames[scheduledDayIndex];
+          const daysOverdueText = overdueDaysAgo === 1 ? "1 day overdue" : "2 days overdue";
+          return {
+            isToday: false,
+            isOverdue: true,
+            isUpcoming: false,
+            isDaily: false,
+            statusLabel: "Overdue",
+            dueDetail: `Overdue (${daysOverdueText} • ${scheduledDayName})`
+          };
+        }
+      }
+    }
+
+    // Otherwise, scheduled for another day later in the cycle,
+    // OR overdue older than 2 days (automatically removed from the list!)
     return {
       isToday: false,
       isOverdue: false,
@@ -214,14 +231,37 @@ function getChoreScheduleStatus(task: Task, now: Date = new Date()): ChoreSchedu
     };
   }
 
-  const isPastDue = Boolean(task.last_completed_date);
+  // Overdue chores should be removed automatically after 2 days if not completed
+  if (task.last_completed_date) {
+    const lastDate = new Date(task.last_completed_date);
+    const diffDays = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays > 2) {
+      return {
+        isToday: false,
+        isOverdue: false,
+        isUpcoming: false,
+        isDaily: false,
+        statusLabel: "Expired",
+        dueDetail: "Removed after 2 days"
+      };
+    }
+    return {
+      isToday: false,
+      isOverdue: true,
+      isUpcoming: false,
+      isDaily: false,
+      statusLabel: "Overdue",
+      dueDetail: `Overdue (${diffDays}d ago)`
+    };
+  }
+
   return {
-    isToday: !isPastDue,
-    isOverdue: isPastDue,
+    isToday: true,
+    isOverdue: false,
     isUpcoming: false,
     isDaily: false,
-    statusLabel: isPastDue ? "Overdue" : "Due This Period",
-    dueDetail: isPastDue ? "Past Due" : getRecurrenceLabel(recurrence)
+    statusLabel: "Due This Period",
+    dueDetail: getRecurrenceLabel(recurrence)
   };
 }
 
@@ -233,6 +273,7 @@ interface Task {
   assigned_to: string; // profile_id or "up_for_grabs"
   recurrence: Recurrence | null;
   last_completed_date: string;
+  created_at?: string;
   is_completed_today?: boolean;
   is_completed?: boolean;
   is_approved?: boolean;
@@ -382,14 +423,6 @@ function PinPadModal({
           </button>
         ))}
       </div>
-
-      <button
-        type="button"
-        onClick={onCancel}
-        className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-400 text-xs font-semibold transition-none cursor-pointer"
-      >
-        Cancel &amp; Return to Dashboard
-      </button>
     </div>
   );
 }
@@ -435,7 +468,7 @@ export default function App() {
       category: "routine",
       reward_amount: 0.0,
       assigned_to: "child_01",
-      recurrence: { frequency: "weekly", days_of_week: [4] }, // Thursday (yesterday - unfinished, so OVERDUE)
+      recurrence: { frequency: "weekly", days_of_week: [(new Date().getDay() + 6) % 7] }, // Yesterday (unfinished, so OVERDUE)
       last_completed_date: "2026-09-17",
       is_completed_today: false,
       notes: []
@@ -446,7 +479,7 @@ export default function App() {
       category: "routine",
       reward_amount: 0.0,
       assigned_to: "child_01",
-      recurrence: { frequency: "weekly", days_of_week: [6] }, // Saturday (tomorrow - UPCOMING, not in daily goal)
+      recurrence: { frequency: "weekly", days_of_week: [(new Date().getDay() + 1) % 7] }, // Tomorrow (UPCOMING tomorrow - preview, not in daily goal)
       last_completed_date: "2026-09-19",
       is_completed_today: false,
       notes: []
@@ -673,11 +706,17 @@ export default function App() {
   });
 
   const [chorePage, setChorePage] = useState<number>(1);
+  const [parentChorePage, setParentChorePage] = useState<number>(1);
 
   // Reset page when switching child or tab
   useEffect(() => {
     setChorePage(1);
   }, [selectedChildId, childModalTab]);
+
+  // Reset parent chore page when switching filter
+  useEffect(() => {
+    setParentChorePage(1);
+  }, [manageChoresFilter]);
 
   // Summary counts: daily goal across all children (excluding upcoming)
   const dailyGoalTasksAll = tasks.filter((t) => {
@@ -948,6 +987,7 @@ export default function App() {
           ? { frequency: newFrequency, days_of_week: newDays }
           : null,
       last_completed_date: "",
+      created_at: new Date().toISOString(),
       is_completed_today: false,
       is_completed: false,
       is_approved: false,
@@ -958,6 +998,8 @@ export default function App() {
     setNewTitle("");
     setNewReward("5.00");
     setNewNote("");
+    setNewDays([0, 1, 2, 3, 4, 5, 6]);
+    setNewFrequency("weekly");
     setNewAssignedTos(["up_for_grabs"]);
     setParentActiveTab("manage_chores");
   };
@@ -986,6 +1028,7 @@ export default function App() {
             category: draft.category,
             reward_amount: draft.category === "monetized" ? draft.reward_amount : 0,
             assigned_to: draft.assigned_to,
+            created_at: t.created_at || new Date().toISOString(),
             recurrence:
               draft.category === "routine"
                 ? { frequency: draft.frequency, days_of_week: draft.days_of_week }
@@ -1045,13 +1088,17 @@ export default function App() {
     if (approved.length === 0) return;
 
     const total = approved.reduce((sum, t) => sum + t.reward_amount, 0);
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+    const weekAgoStr = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
     const newRecord: PayoutRecord = {
       id: `payout_${Date.now()}`,
       profile_id: payoutProfileId,
       total_amount: parseFloat(total.toFixed(2)),
-      date_range_start: "2026-09-19",
-      date_range_end: "2026-09-26",
-      processed_timestamp: new Date().toISOString(),
+      date_range_start: weekAgoStr,
+      date_range_end: todayStr,
+      processed_timestamp: now.toISOString(),
       approved_task_ids: approved.map((t) => t.id)
     };
 
@@ -1677,17 +1724,6 @@ module.exports = NodeHelper.create({ ... });`}
             {/* Modal Header Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 sm:px-7 py-4 bg-slate-950/70 shrink-0">
               <div className="flex items-center gap-3.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveModal(null);
-                    setSelectedChildId(null);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-sm transition cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back to Dashboard</span>
-                </button>
                 <div className="w-11 h-11 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xl font-black text-white shadow-lg shadow-sky-500/20 shrink-0">
                   {selectedChildId === "up_for_grabs" ? (
                     <Zap className="w-5 h-5 text-amber-300" />
@@ -1718,8 +1754,9 @@ module.exports = NodeHelper.create({ ... });`}
                   setActiveModal(null);
                   setSelectedChildId(null);
                 }}
-                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition cursor-pointer"
-                title="Close and return to dashboard"
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-slate-300 hover:text-white transition cursor-pointer"
+                title="Close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1973,7 +2010,7 @@ module.exports = NodeHelper.create({ ... });`}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setChorePage((p) => Math.max(1, p - 1))}
+                    onClick={() => setChorePage(Math.max(1, validChorePage - 1))}
                     disabled={validChorePage <= 1}
                     className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none text-white font-bold text-xs sm:text-sm transition cursor-pointer border border-white/10"
                     title="Previous page"
@@ -1996,7 +2033,7 @@ module.exports = NodeHelper.create({ ... });`}
 
                   <button
                     type="button"
-                    onClick={() => setChorePage((p) => Math.min(totalChorePages, p + 1))}
+                    onClick={() => setChorePage(Math.min(totalChorePages, validChorePage + 1))}
                     disabled={validChorePage >= totalChorePages}
                     className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none text-white font-bold text-xs sm:text-sm transition cursor-pointer border border-white/10"
                     title="Next page"
@@ -2419,6 +2456,7 @@ module.exports = NodeHelper.create({ ... });`}
                       onClick={() => {
                         setChoresPerPage(size);
                         setChorePage(1);
+                        setParentChorePage(1);
                         try {
                           localStorage.setItem("ct_chores_per_page", String(size));
                         } catch (e) {}
@@ -2737,10 +2775,51 @@ module.exports = NodeHelper.create({ ... });`}
 
                         {newFrequency === "weekly" ? (
                           <div>
-                            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Active Days of Week</label>
+                            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                              <label className="text-[11px] font-semibold text-slate-400">Active Days of Week</label>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setNewDays([((currentTime.getDay() + 1) % 7)])}
+                                  className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold transition cursor-pointer flex items-center gap-1 ${
+                                    newDays.length === 1 && newDays.includes((currentTime.getDay() + 1) % 7)
+                                      ? "bg-indigo-600/40 border-indigo-400 text-indigo-200 shadow-sm"
+                                      : "bg-white/5 border-white/10 text-indigo-300/80 hover:text-white hover:bg-white/10"
+                                  }`}
+                                  title="Test Day Before Preview with chore scheduled for tomorrow"
+                                >
+                                  <Sparkles className="w-2.5 h-2.5 text-indigo-300" />
+                                  <span>Tomorrow Only</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setNewDays([currentTime.getDay()])}
+                                  className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold transition cursor-pointer ${
+                                    newDays.length === 1 && newDays.includes(currentTime.getDay())
+                                      ? "bg-sky-600/40 border-sky-400 text-sky-200 shadow-sm"
+                                      : "bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10"
+                                  }`}
+                                >
+                                  Today Only
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setNewDays([0, 1, 2, 3, 4, 5, 6])}
+                                  className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold transition cursor-pointer ${
+                                    newDays.length === 7
+                                      ? "bg-sky-600/40 border-sky-400 text-sky-200 shadow-sm"
+                                      : "bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10"
+                                  }`}
+                                >
+                                  Everyday
+                                </button>
+                              </div>
+                            </div>
                             <div className="flex gap-1.5">
                               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dIdx) => {
                                 const sel = newDays.includes(dIdx);
+                                const isTmrw = dIdx === ((currentTime.getDay() + 1) % 7);
+                                const isTdy = dIdx === currentTime.getDay();
                                 return (
                                   <button
                                     key={day}
@@ -2750,13 +2829,25 @@ module.exports = NodeHelper.create({ ... });`}
                                         sel ? prev.filter((x) => x !== dIdx) : [...prev, dIdx]
                                       );
                                     }}
-                                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                                    className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer flex flex-col items-center justify-center ${
                                       sel
-                                        ? "bg-sky-600 border-sky-400 text-white"
+                                        ? isTmrw
+                                          ? "bg-indigo-600 border-indigo-400 text-white shadow-sm"
+                                          : "bg-sky-600 border-sky-400 text-white"
                                         : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300"
                                     }`}
                                   >
-                                    {day}
+                                    <span>{day}</span>
+                                    {isTmrw && (
+                                      <span className="text-[8px] font-black text-indigo-200 uppercase tracking-tight">
+                                        Tmrw
+                                      </span>
+                                    )}
+                                    {isTdy && (
+                                      <span className="text-[8px] font-black text-amber-200 uppercase tracking-tight">
+                                        Today
+                                      </span>
+                                    )}
                                   </button>
                                 );
                               })}
@@ -2874,8 +2965,8 @@ module.exports = NodeHelper.create({ ... });`}
                   </div>
                 )}
 
-                {/* Chores Inventory List */}
-                <div className="space-y-3">
+                {/* Chores Inventory List (Paginated) */}
+                <div className="space-y-4">
                   {(() => {
                     let filtered = tasks;
                     if (manageChoresFilter === "routine") {
@@ -2904,7 +2995,16 @@ module.exports = NodeHelper.create({ ... });`}
                       );
                     }
 
-                    return filtered.map((task) => {
+                    const totalAdminChoreCount = filtered.length;
+                    const totalAdminChorePages = Math.max(1, Math.ceil(totalAdminChoreCount / choresPerPage));
+                    const validAdminChorePage = Math.min(Math.max(1, parentChorePage), totalAdminChorePages);
+                    const adminChoreStartIndex = (validAdminChorePage - 1) * choresPerPage;
+                    const paginatedAdminChores = filtered.slice(adminChoreStartIndex, adminChoreStartIndex + choresPerPage);
+
+                    return (
+                      <>
+                        <div className="space-y-3">
+                          {paginatedAdminChores.map((task) => {
                       const isEditing = editingTaskId === task.id && editingChoreDraft;
                       const isRoutine = task.category === "routine";
                       const assignedChild = profiles.find((p) => p.id === task.assigned_to);
@@ -3011,32 +3111,88 @@ module.exports = NodeHelper.create({ ... });`}
                                 </div>
 
                                 {editingChoreDraft.frequency === "weekly" ? (
-                                  <div className="flex gap-1 pt-1">
-                                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dIdx) => {
-                                      const sel = editingChoreDraft.days_of_week.includes(dIdx);
-                                      return (
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[10px] text-slate-400 font-semibold">Active Days</span>
+                                      <div className="flex gap-1">
                                         <button
-                                          key={day}
                                           type="button"
-                                          onClick={() => {
-                                            setEditingChoreDraft((prev) => {
-                                              if (!prev) return null;
-                                              const updated = sel
-                                                ? prev.days_of_week.filter((x) => x !== dIdx)
-                                                : [...prev.days_of_week, dIdx];
-                                              return { ...prev, days_of_week: updated };
-                                            });
-                                          }}
-                                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                                            sel
-                                              ? "bg-sky-600 border-sky-400 text-white"
-                                              : "bg-white/5 border-white/10 text-slate-500"
+                                          onClick={() =>
+                                            setEditingChoreDraft((prev) =>
+                                              prev ? { ...prev, days_of_week: [(currentTime.getDay() + 1) % 7] } : null
+                                            )
+                                          }
+                                          className={`text-[9px] px-1.5 py-0.5 rounded border font-bold transition cursor-pointer ${
+                                            editingChoreDraft.days_of_week.length === 1 &&
+                                            editingChoreDraft.days_of_week.includes((currentTime.getDay() + 1) % 7)
+                                              ? "bg-indigo-600/40 border-indigo-400 text-indigo-200"
+                                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
                                           }`}
                                         >
-                                          {day}
+                                          Tomorrow
                                         </button>
-                                      );
-                                    })}
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setEditingChoreDraft((prev) =>
+                                              prev ? { ...prev, days_of_week: [currentTime.getDay()] } : null
+                                            )
+                                          }
+                                          className={`text-[9px] px-1.5 py-0.5 rounded border font-bold transition cursor-pointer ${
+                                            editingChoreDraft.days_of_week.length === 1 &&
+                                            editingChoreDraft.days_of_week.includes(currentTime.getDay())
+                                              ? "bg-sky-600/40 border-sky-400 text-sky-200"
+                                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                                          }`}
+                                        >
+                                          Today
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setEditingChoreDraft((prev) =>
+                                              prev ? { ...prev, days_of_week: [0, 1, 2, 3, 4, 5, 6] } : null
+                                            )
+                                          }
+                                          className="text-[9px] px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-slate-400 hover:text-white font-bold transition cursor-pointer"
+                                        >
+                                          Everyday
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-1 pt-0.5">
+                                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dIdx) => {
+                                        const sel = editingChoreDraft.days_of_week.includes(dIdx);
+                                        const isTmrw = dIdx === ((currentTime.getDay() + 1) % 7);
+                                        const isTdy = dIdx === currentTime.getDay();
+                                        return (
+                                          <button
+                                            key={day}
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingChoreDraft((prev) => {
+                                                if (!prev) return null;
+                                                const updated = sel
+                                                  ? prev.days_of_week.filter((x) => x !== dIdx)
+                                                  : [...prev.days_of_week, dIdx];
+                                                return { ...prev, days_of_week: updated };
+                                              });
+                                            }}
+                                            className={`flex-1 py-1 rounded-lg text-xs font-bold border transition cursor-pointer flex flex-col items-center justify-center ${
+                                              sel
+                                                ? isTmrw
+                                                  ? "bg-indigo-600 border-indigo-400 text-white"
+                                                  : "bg-sky-600 border-sky-400 text-white"
+                                                : "bg-white/5 border-white/10 text-slate-500"
+                                            }`}
+                                          >
+                                            <span>{day}</span>
+                                            {isTmrw && <span className="text-[7px] font-black uppercase">Tmrw</span>}
+                                            {isTdy && <span className="text-[7px] font-black uppercase">Today</span>}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 ) : (
                                   <div className="p-2.5 rounded-xl bg-sky-950/30 border border-sky-500/20 text-xs text-sky-300">
@@ -3254,9 +3410,70 @@ module.exports = NodeHelper.create({ ... });`}
                           </div>
                         </div>
                       );
-                    });
-                  })()}
-                </div>
+                    })}
+                  </div>
+
+                  {/* Bottom Pagination Bar with Forward/Backward Controls and Direct Page Jumps */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setParentChorePage(Math.max(1, validAdminChorePage - 1))}
+                        disabled={validAdminChorePage <= 1}
+                        className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none text-white font-bold text-xs sm:text-sm transition cursor-pointer border border-white/10"
+                        title="Previous page"
+                        aria-label="Previous page"
+                      >
+                        <ChevronLeft className="w-4 h-4 text-sky-400" />
+                        <span>Previous</span>
+                      </button>
+
+                      <div className="flex items-center gap-1.5 px-2">
+                        <span className="text-xs sm:text-sm font-bold text-white">
+                          Page {validAdminChorePage} of {totalAdminChorePages}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          ({adminChoreStartIndex + 1}–{Math.min(adminChoreStartIndex + choresPerPage, totalAdminChoreCount)} of {totalAdminChoreCount} chores)
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setParentChorePage(Math.min(totalAdminChorePages, validAdminChorePage + 1))}
+                        disabled={validAdminChorePage >= totalAdminChorePages}
+                        className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none text-white font-bold text-xs sm:text-sm transition cursor-pointer border border-white/10"
+                        title="Next page"
+                        aria-label="Next page"
+                      >
+                        <span>Next</span>
+                        <ChevronRight className="w-4 h-4 text-sky-400" />
+                      </button>
+                    </div>
+
+                    {/* Direct Page Jump Buttons */}
+                    {totalAdminChorePages > 1 && (
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalAdminChorePages }, (_, i) => i + 1).map((pg) => (
+                          <button
+                            key={pg}
+                            type="button"
+                            onClick={() => setParentChorePage(pg)}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
+                              validAdminChorePage === pg
+                                ? "bg-sky-500 text-white shadow-sm shadow-sky-500/40"
+                                : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/15"
+                            }`}
+                          >
+                            {pg}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
               </div>
             )}
 

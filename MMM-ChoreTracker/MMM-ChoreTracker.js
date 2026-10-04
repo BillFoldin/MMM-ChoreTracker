@@ -1060,41 +1060,7 @@ Module.register("MMM-ChoreTracker", {
         };
       }
 
-      // 3. For non-daily weekly tasks: check if past occurrence was left unfinished (Overdue!)
-      if (!isDaily) {
-        let daysAgo = 0;
-        let scheduledDayIndex = -1;
-        for (let i = 1; i <= 7; i++) {
-          const checkDay = (currentDayOfWeek - i + 7) % 7;
-          if (days.includes(checkDay)) {
-            daysAgo = i;
-            scheduledDayIndex = checkDay;
-            break;
-          }
-        }
-
-        if (daysAgo > 0) {
-          const lastScheduledDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-          const lastScheduledDateStr = lastScheduledDate.toISOString().split("T")[0];
-          const isCompletedForLastSchedule = Boolean(
-            task.last_completed_date && task.last_completed_date >= lastScheduledDateStr
-          );
-
-          if (!isCompletedForLastSchedule) {
-            const scheduledDayName = dayNames[scheduledDayIndex];
-            return {
-              isToday: false,
-              isOverdue: true,
-              isUpcoming: false,
-              isDaily: false,
-              statusLabel: "Overdue",
-              dueDetail: `Overdue (Scheduled for ${scheduledDayName})`
-            };
-          }
-        }
-      }
-
-      // 4. Upcoming tomorrow
+      // 3. Day before preview: if scheduled for tomorrow, show as upcoming tomorrow (not overdue!)
       if (days.includes(tomorrowDayOfWeek)) {
         return {
           isToday: false,
@@ -1106,6 +1072,55 @@ Module.register("MMM-ChoreTracker", {
         };
       }
 
+      // 4. For non-daily weekly tasks: check if past occurrence within last 2 days was left unfinished (Overdue!)
+      // Overdue chores should be removed automatically after 2 days if not completed
+      if (!isDaily) {
+        let daysAgo = 0;
+        let scheduledDayIndex = -1;
+        // Only check 1 day ago and 2 days ago (max 2 days overdue!)
+        for (let i = 1; i <= 2; i++) {
+          const checkDay = (currentDayOfWeek - i + 7) % 7;
+          if (days.includes(checkDay)) {
+            daysAgo = i;
+            scheduledDayIndex = checkDay;
+            break;
+          }
+        }
+
+        if (daysAgo > 0) {
+          const lastScheduledDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+          const lastScheduledDateStr = lastScheduledDate.toISOString().split("T")[0];
+
+          // Check if chore was created after that past date
+          let createdAfterSchedule = false;
+          if (task.created_at) {
+            const taskCreatedDate = String(task.created_at).split("T")[0];
+            if (taskCreatedDate > lastScheduledDateStr) {
+              createdAfterSchedule = true;
+            }
+          }
+
+          const isCompletedForLastSchedule = Boolean(
+            task.last_completed_date && task.last_completed_date >= lastScheduledDateStr
+          );
+
+          if (!isCompletedForLastSchedule && !createdAfterSchedule) {
+            const scheduledDayName = dayNames[scheduledDayIndex];
+            const daysOverdueText = daysAgo === 1 ? "1 day overdue" : "2 days overdue";
+            return {
+              isToday: false,
+              isOverdue: true,
+              isUpcoming: false,
+              isDaily: false,
+              statusLabel: "Overdue",
+              dueDetail: `Overdue (${daysOverdueText} • ${scheduledDayName})`
+            };
+          }
+        }
+      }
+
+      // Otherwise, scheduled for another day later in cycle,
+      // OR overdue older than 2 days (automatically removed from active list!)
       return {
         isToday: false,
         isOverdue: false,
@@ -1128,14 +1143,37 @@ Module.register("MMM-ChoreTracker", {
       };
     }
 
-    const isPastDue = Boolean(task.last_completed_date);
+    // Overdue chores should be removed automatically after 2 days if not completed
+    if (task.last_completed_date) {
+      const lastDate = new Date(task.last_completed_date);
+      const diffDays = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays > 2) {
+        return {
+          isToday: false,
+          isOverdue: false,
+          isUpcoming: false,
+          isDaily: false,
+          statusLabel: "Expired",
+          dueDetail: "Removed after 2 days"
+        };
+      }
+      return {
+        isToday: false,
+        isOverdue: true,
+        isUpcoming: false,
+        isDaily: false,
+        statusLabel: "Overdue",
+        dueDetail: `Overdue (${diffDays}d ago)`
+      };
+    }
+
     return {
-      isToday: !isPastDue,
-      isOverdue: isPastDue,
+      isToday: true,
+      isOverdue: false,
       isUpcoming: false,
       isDaily: false,
-      statusLabel: isPastDue ? "Overdue" : "Due This Period",
-      dueDetail: isPastDue ? "Past Due" : "Due This Period"
+      statusLabel: "Due This Period",
+      dueDetail: "Due This Period"
     };
   },
 
@@ -1164,15 +1202,6 @@ Module.register("MMM-ChoreTracker", {
     headerLeft.style.display = "flex";
     headerLeft.style.alignItems = "center";
     headerLeft.style.gap = "14px";
-
-    const backBtn = document.createElement("button");
-    backBtn.className = "ct-btn-close-modal";
-    backBtn.innerHTML = `← Back`;
-    backBtn.setAttribute("aria-label", "Back to dashboard");
-    backBtn.addEventListener("click", function () {
-      self.closeModal();
-    });
-    headerLeft.appendChild(backBtn);
 
     const titleGroup = document.createElement("div");
     titleGroup.className = "ct-modal-title";
@@ -3119,6 +3148,83 @@ Module.register("MMM-ChoreTracker", {
       freqGroup.appendChild(freqGrid);
 
       if (currentFreq === "weekly") {
+        // Quick presets header for weekly scheduling
+        const presetsRow = document.createElement("div");
+        presetsRow.style.display = "flex";
+        presetsRow.style.justifyContent = "space-between";
+        presetsRow.style.alignItems = "center";
+        presetsRow.style.marginBottom = "6px";
+
+        const label = document.createElement("label");
+        label.className = "ct-form-label";
+        label.style.margin = "0";
+        label.innerText = "Active Days of Week";
+        presetsRow.appendChild(label);
+
+        const presetsGroup = document.createElement("div");
+        presetsGroup.style.display = "flex";
+        presetsGroup.style.gap = "6px";
+
+        const tomorrowDay = (new Date().getDay() + 1) % 7;
+        const todayDay = new Date().getDay();
+
+        // Tomorrow Only Preset
+        const tmrwBtn = document.createElement("button");
+        tmrwBtn.type = "button";
+        tmrwBtn.className = "ct-btn-secondary";
+        tmrwBtn.style.padding = "2px 8px";
+        tmrwBtn.style.fontSize = "11px";
+        const isTmrwOnly = (self.newTaskDraft.days_of_week || []).length === 1 && (self.newTaskDraft.days_of_week || [])[0] === tomorrowDay;
+        if (isTmrwOnly) {
+          tmrwBtn.style.borderColor = "rgba(99, 102, 241, 0.6)";
+          tmrwBtn.style.color = "#c7d2fe";
+          tmrwBtn.style.background = "rgba(99, 102, 241, 0.25)";
+        }
+        tmrwBtn.innerText = "✨ Tomorrow Only";
+        tmrwBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          self.newTaskDraft.days_of_week = [tomorrowDay];
+          self.updateDom(50);
+        });
+        presetsGroup.appendChild(tmrwBtn);
+
+        // Today Only Preset
+        const tdyBtn = document.createElement("button");
+        tdyBtn.type = "button";
+        tdyBtn.className = "ct-btn-secondary";
+        tdyBtn.style.padding = "2px 8px";
+        tdyBtn.style.fontSize = "11px";
+        const isTdyOnly = (self.newTaskDraft.days_of_week || []).length === 1 && (self.newTaskDraft.days_of_week || [])[0] === todayDay;
+        if (isTdyOnly) {
+          tdyBtn.style.borderColor = "rgba(56, 189, 248, 0.6)";
+          tdyBtn.style.color = "#7dd3fc";
+          tdyBtn.style.background = "rgba(56, 189, 248, 0.2)";
+        }
+        tdyBtn.innerText = "Today Only";
+        tdyBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          self.newTaskDraft.days_of_week = [todayDay];
+          self.updateDom(50);
+        });
+        presetsGroup.appendChild(tdyBtn);
+
+        // Everyday Preset
+        const everyBtn = document.createElement("button");
+        everyBtn.type = "button";
+        everyBtn.className = "ct-btn-secondary";
+        everyBtn.style.padding = "2px 8px";
+        everyBtn.style.fontSize = "11px";
+        everyBtn.innerText = "Everyday";
+        everyBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          self.newTaskDraft.days_of_week = [0, 1, 2, 3, 4, 5, 6];
+          self.updateDom(50);
+        });
+        presetsGroup.appendChild(everyBtn);
+
+        presetsRow.appendChild(presetsGroup);
+        freqGroup.appendChild(presetsRow);
+
         // Days of Week recurrence chips
         const daysSelector = document.createElement("div");
         daysSelector.className = "ct-days-selector";
@@ -3136,8 +3242,23 @@ Module.register("MMM-ChoreTracker", {
         days.forEach((item) => {
           const chip = document.createElement("div");
           const isSelected = (self.newTaskDraft.days_of_week || []).includes(item.d);
+          const isTomorrow = item.d === tomorrowDay;
+          const isToday = item.d === todayDay;
+
           chip.className = `ct-day-chip ${isSelected ? "selected" : ""}`;
-          chip.innerText = item.label;
+          chip.style.display = "flex";
+          chip.style.flexDirection = "column";
+          chip.style.alignItems = "center";
+          chip.style.padding = "4px 2px";
+
+          let subBadge = "";
+          if (isTomorrow) {
+            subBadge = `<span style="font-size:8px; font-weight:800; color:#a5b4fc; text-transform:uppercase; margin-top:2px;">Tmrw</span>`;
+          } else if (isToday) {
+            subBadge = `<span style="font-size:8px; font-weight:800; color:#fde68a; text-transform:uppercase; margin-top:2px;">Today</span>`;
+          }
+
+          chip.innerHTML = `<span>${item.label}</span>${subBadge}`;
 
           chip.addEventListener("click", function () {
             const arr = self.newTaskDraft.days_of_week || [];

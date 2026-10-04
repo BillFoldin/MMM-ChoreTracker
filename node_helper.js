@@ -275,7 +275,7 @@ module.exports = NodeHelper.create({
    * Resolve and initialize local databases using zero-dependency resilient storage
    */
   initDatabases: function () {
-    const dbDirName = this.config.databaseDirectory || "data";
+    const dbDirName = (this.config && this.config.databaseDirectory) || "data";
     const resolvedChoresPath = this.resolveDataPath("chores_db.json", dbDirName);
     const resolvedPayoutsPath = this.resolveDataPath("payouts_db.json", dbDirName);
 
@@ -976,6 +976,7 @@ module.exports = NodeHelper.create({
             }
           : null,
         last_completed_date: "",
+        created_at: new Date().toISOString(),
         is_completed_today: false,
         is_completed: false,
         is_approved: false,

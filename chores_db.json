@@ -83,6 +83,34 @@
       "notes": []
     },
     {
+      "id": "task_105",
+      "title": "Take Out Recycling & Green Waste",
+      "category": "routine",
+      "reward_amount": 0.00,
+      "assigned_to": "child_01",
+      "recurrence": {
+        "frequency": "weekly",
+        "days_of_week": [6]
+      },
+      "last_completed_date": "2026-09-17",
+      "is_completed_today": false,
+      "notes": []
+    },
+    {
+      "id": "task_106",
+      "title": "Dust Shelves & Organize Desk",
+      "category": "routine",
+      "reward_amount": 0.00,
+      "assigned_to": "child_01",
+      "recurrence": {
+        "frequency": "weekly",
+        "days_of_week": [1]
+      },
+      "last_completed_date": "2026-09-19",
+      "is_completed_today": false,
+      "notes": []
+    },
+    {
       "id": "task_201",
       "title": "Rake Leaves in Backyard",
       "category": "monetized",
