@@ -631,13 +631,6 @@ Module.register("MMM-ChoreTracker", {
       cursor.className = "ct-vk-cursor";
       preview.appendChild(cursor);
     }
-    if (this.virtualKeyboard.targetInput) {
-      this.virtualKeyboard.targetInput.value = val;
-      this.virtualKeyboard.targetInput.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    if (typeof this.virtualKeyboard.onChange === "function") {
-      this.virtualKeyboard.onChange(val);
-    }
   },
 
   commitVirtualKeyboard: function () {

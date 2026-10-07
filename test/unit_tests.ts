@@ -612,32 +612,33 @@ test("15. Modal button structure validation: child chores and PIN modals maintai
   assert.ok(modalTypes.includes("pin_pad"));
 });
 
-test("16. Virtual keyboard synchronous buffer accumulation prevents dropped keystrokes and stale closure truncation", () => {
-  // Simulates rapid typing with ref-backed buffer pattern
-  let committedVal = "";
+test("16. Virtual keyboard typing isolates buffer and only copies the whole string upon commit", () => {
+  let backgroundField = "Original Value";
+  let committedVal = backgroundField;
   const onConfirm = (val: string) => {
     committedVal = val;
   };
 
-  const keyboardRef = { current: "" };
+  const keyboardRef = { current: "Original Value" };
   const typeKey = (char: string) => {
     keyboardRef.current += char;
-    onConfirm(keyboardRef.current);
+    // Note: Do NOT call onConfirm while typing to prevent background re-renders!
   };
 
-  // User types "Vacuum living room" in rapid succession
-  const inputStr = "Vacuum living room";
+  // User clears and types long string "Clean the entire basement and garage workshop"
+  keyboardRef.current = "";
+  const inputStr = "Clean the entire basement and garage workshop";
   for (const ch of inputStr) {
     typeKey(ch);
   }
 
-  assert.equal(keyboardRef.current, "Vacuum living room", "Buffer must contain full string");
-  assert.equal(committedVal, "Vacuum living room", "Target field must receive complete string without truncation");
+  // During typing, background field must remain untouched!
+  assert.equal(committedVal, "Original Value", "Target field must NOT update as user writes");
+  assert.equal(keyboardRef.current, "Clean the entire basement and garage workshop");
 
-  // User presses backspace twice
-  keyboardRef.current = keyboardRef.current.slice(0, -2);
+  // User clicks Done / presses Enter -> only now is the whole string copied
   onConfirm(keyboardRef.current);
-  assert.equal(committedVal, "Vacuum living ro");
+  assert.equal(committedVal, "Clean the entire basement and garage workshop", "Target field receives complete string upon commit");
 });
 
 test("17. Currency decimal typing is safely handled without browser input truncation", () => {

@@ -726,15 +726,7 @@ export default function App() {
 
   const cancelVirtualKeyboard = () => {
     lastKeyboardCloseTimeRef.current = Date.now();
-    const originalVal = keyboardInitialValRef.current;
-    keyboardValueRef.current = originalVal;
-    if (keyboardOnConfirmRef.current) {
-      try {
-        keyboardOnConfirmRef.current(originalVal);
-      } catch (err) {
-        console.error("Virtual keyboard cancel error:", err);
-      }
-    }
+    // Leave the background field completely unchanged
     if (document.activeElement && (document.activeElement as HTMLElement).blur) {
       try {
         (document.activeElement as HTMLElement).blur();
@@ -750,11 +742,6 @@ export default function App() {
     if (popupInputRef.current) {
       popupInputRef.current.value = nextVal;
     }
-    if (keyboardOnConfirmRef.current) {
-      try {
-        keyboardOnConfirmRef.current(nextVal);
-      } catch (err) {}
-    }
     setVirtualKeyboard((prev) => ({
       ...prev,
       value: nextVal,
@@ -769,11 +756,6 @@ export default function App() {
     if (popupInputRef.current) {
       popupInputRef.current.value = nextVal;
     }
-    if (keyboardOnConfirmRef.current) {
-      try {
-        keyboardOnConfirmRef.current(nextVal);
-      } catch (err) {}
-    }
     setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
   };
 
@@ -781,11 +763,6 @@ export default function App() {
     keyboardValueRef.current = "";
     if (popupInputRef.current) {
       popupInputRef.current.value = "";
-    }
-    if (keyboardOnConfirmRef.current) {
-      try {
-        keyboardOnConfirmRef.current("");
-      } catch (err) {}
     }
     setVirtualKeyboard((prev) => ({ ...prev, value: "" }));
   };
@@ -797,11 +774,6 @@ export default function App() {
     keyboardValueRef.current = nextVal;
     if (popupInputRef.current) {
       popupInputRef.current.value = nextVal;
-    }
-    if (keyboardOnConfirmRef.current) {
-      try {
-        keyboardOnConfirmRef.current(nextVal);
-      } catch (err) {}
     }
     setVirtualKeyboard((prev) => ({ ...prev, value: nextVal }));
   };
@@ -3912,31 +3884,16 @@ module.exports = NodeHelper.create({ ... });`}
                 onInput={(e) => {
                   const val = (e.target as HTMLInputElement).value;
                   keyboardValueRef.current = val;
-                  if (keyboardOnConfirmRef.current) {
-                    try {
-                      keyboardOnConfirmRef.current(val);
-                    } catch (err) {}
-                  }
                   setVirtualKeyboard((prev) => ({ ...prev, value: val }));
                 }}
                 onChange={(e) => {
                   const val = e.target.value;
                   keyboardValueRef.current = val;
-                  if (keyboardOnConfirmRef.current) {
-                    try {
-                      keyboardOnConfirmRef.current(val);
-                    } catch (err) {}
-                  }
                   setVirtualKeyboard((prev) => ({ ...prev, value: val }));
                 }}
                 onBlur={(e) => {
                   const val = e.target.value;
                   keyboardValueRef.current = val;
-                  if (keyboardOnConfirmRef.current) {
-                    try {
-                      keyboardOnConfirmRef.current(val);
-                    } catch (err) {}
-                  }
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
