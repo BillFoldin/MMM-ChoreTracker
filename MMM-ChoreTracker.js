@@ -30,7 +30,7 @@ Module.register("MMM-ChoreTracker", {
     pollInterval: 60000, // 60s fallback poll
     showCompletedTasks: true,
     allowChildNoteAuthoring: true,
-    choresPerPage: 4,
+    choresPerPage: 6,
     databaseDirectory: "data"
   },
 
